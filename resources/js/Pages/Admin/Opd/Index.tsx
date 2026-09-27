@@ -11,10 +11,13 @@ import {
     Command,
     ChevronDown,
     CircleCheck,
+    CircleHelp,
     CircleOff,
     Download,
     Eye,
     FileClock,
+    FileDown,
+    FileSpreadsheet,
     FilePenLine,
     FileText,
     FolderClock,
@@ -28,6 +31,7 @@ import {
     Pin,
     RotateCcw,
     SearchCheck,
+    Save,
     Server,
     Settings2,
     ShieldCheck,
@@ -210,7 +214,7 @@ const profilingQueue = [
     {
         id: 2,
         opd: "Badan Kepegawaian Daerah",
-        diajukan: "2026-09-12",
+        diajukan: "2026-08-12",
         bandwidth: "50 Mbps",
         device: 28,
         status: "Diajukan",
@@ -680,19 +684,26 @@ const FSelect = ({
             </label>
         )}
         {hint && <p className="text-xs text-slate-400 mb-1.5">{hint}</p>}
-        <select
-            value={value}
-            onChange={(e) => onChange?.(e.target.value)}
-            className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 pr-10 text-sm text-slate-800 transition-all hover:border-blue-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-            {options.map((o) => (
-                <option key={o}>{o}</option>
-            ))}
-        </select>
-        <ChevronDown
-            size={16}
-            className="pointer-events-none absolute right-3 top-[calc(50%+1px)] -translate-y-1/2 text-slate-400"
-        />
+        <div className="relative">
+            <select
+                value={value}
+                onChange={(e) => onChange?.(e.target.value)}
+                style={{
+                    appearance: "none",
+                    WebkitAppearance: "none",
+                    backgroundImage: "none",
+                }}
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 pr-10 text-sm text-slate-800 transition-all hover:border-blue-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                {options.map((o) => (
+                    <option key={o}>{o}</option>
+                ))}
+            </select>
+            <ChevronDown
+                size={16}
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+        </div>
     </div>
 );
 
@@ -2232,7 +2243,9 @@ function MasterOPD() {
                         />
                     </div>
                     <div className="px-6 pb-6 flex gap-3">
-                        <Btn onClick={save}>💾 Simpan Data</Btn>
+                        <Btn onClick={save}>
+                            <Save size={15} /> Simpan Data
+                        </Btn>
                         <Btn variant="secondary" onClick={() => setModal(null)}>
                             Batal
                         </Btn>
@@ -2263,6 +2276,9 @@ function MasterUser() {
         status: string;
     };
     const [data, setData] = useState<UserRow[]>(userList);
+    const [search, setSearch] = useState("");
+    const [roleFilter, setRoleFilter] = useState("Semua Role");
+    const [statusFilter, setStatusFilter] = useState("Semua Status");
     const [modal, setModal] = useState<"add" | "edit" | "delete" | null>(null);
     const [editing, setEditing] = useState<UserRow | null>(null);
     const [form, setForm] = useState({
@@ -2274,6 +2290,16 @@ function MasterUser() {
         status: "Aktif",
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const filteredUsers = data.filter((user) => {
+        const matchesSearch = `${user.nama} ${user.email} ${user.relasi}`
+            .toLowerCase()
+            .includes(search.toLowerCase());
+        const matchesRole =
+            roleFilter === "Semua Role" || user.role === roleFilter;
+        const matchesStatus =
+            statusFilter === "Semua Status" || user.status === statusFilter;
+        return matchesSearch && matchesRole && matchesStatus;
+    });
 
     const openAdd = () => {
         setForm({
@@ -2376,19 +2402,25 @@ function MasterUser() {
                 <div className="p-4 border-b border-slate-100 flex gap-3 flex-wrap">
                     <div className="flex-1 min-w-[180px]">
                         <SearchBar
-                            value=""
-                            onChange={() => {}}
+                            value={search}
+                            onChange={setSearch}
                             placeholder="Cari nama atau email..."
                         />
                     </div>
                     <FSelect
                         options={["Semua Role", "Admin", "OPD", "Vendor"]}
+                        value={roleFilter}
+                        onChange={setRoleFilter}
                     />
-                    <FSelect options={["Semua Status", "Aktif", "Nonaktif"]} />
+                    <FSelect
+                        options={["Semua Status", "Aktif", "Nonaktif"]}
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                    />
                 </div>
                 {/* Mobile */}
                 <div className="sm:hidden divide-y divide-slate-100">
-                    {data.map((u) => (
+                    {filteredUsers.map((u) => (
                         <div key={u.id} className="p-4 space-y-2.5">
                             <div className="flex items-start justify-between">
                                 <div className="flex items-center gap-3">
@@ -2481,7 +2513,7 @@ function MasterUser() {
                             </tr>
                         </thead>
                         <tbody>
-                            {data.map((u) => (
+                            {filteredUsers.map((u) => (
                                 <tr
                                     key={u.id}
                                     className="border-b border-slate-50 hover:bg-blue-50/30 transition-colors"
@@ -2633,7 +2665,9 @@ function MasterUser() {
                         />
                     </div>
                     <div className="px-6 pb-6 flex gap-3">
-                        <Btn onClick={save}>💾 Simpan Akun</Btn>
+                        <Btn onClick={save}>
+                            <Save size={15} /> Simpan Akun
+                        </Btn>
                         <Btn variant="secondary" onClick={() => setModal(null)}>
                             Batal
                         </Btn>
@@ -3062,7 +3096,9 @@ function FormProfiling() {
                                 ← Kembali
                             </Btn>
                         )}
-                        <Btn variant="ghost">💾 Simpan Draft</Btn>
+                        <Btn variant="ghost">
+                            <Save size={15} /> Simpan Draft
+                        </Btn>
                     </div>
                     {step < 4 ? (
                         <Btn onClick={() => setStep((s) => s + 1)}>
@@ -3271,6 +3307,8 @@ function RiwayatProfiling() {
 // ─── Verifikasi Profiling ─────────────────────────────────────────────────────
 function VerifikasiProfiling() {
     const [sel, setSel] = useState<(typeof profilingQueue)[0] | null>(null);
+    const [statusFilter, setStatusFilter] = useState("Semua Status");
+    const [monthFilter, setMonthFilter] = useState("Semua Bulan");
     const [kesimpulan, setKesimpulan] = useState("");
     const [kondisiVerif, setKondisiVerif] = useState("Baik");
     const [kewajaranOk, setKewajaranOk] = useState<boolean | null>(null);
@@ -3284,6 +3322,20 @@ function VerifikasiProfiling() {
     const pct = sel ? Math.round((sel.dl / parseInt(sel.bandwidth)) * 100) : 0;
     const wajar = pct >= 60;
     const canSubmit = kesimpulan.trim().length >= 10 && kewajaranOk !== null;
+    const filteredProfilings = profilingQueue.filter((profiling) => {
+        const month = Number(profiling.diajukan.slice(5, 7));
+        const matchesStatus =
+            statusFilter === "Semua Status" ||
+            profiling.status === statusFilter;
+        const monthNumberByLabel: Record<string, number> = {
+            "Sep 2026": 9,
+            "Ags 2026": 8,
+        };
+        const matchesMonth =
+            monthFilter === "Semua Bulan" ||
+            month === monthNumberByLabel[monthFilter];
+        return matchesStatus && matchesMonth;
+    });
 
     return (
         <div>
@@ -3294,9 +3346,18 @@ function VerifikasiProfiling() {
             {done && (
                 <div className="mb-4">
                     <InfoBox type={done === "approved" ? "success" : "error"}>
-                        {done === "approved"
-                            ? "✅ Profiling berhasil disetujui dan tersimpan ke riwayat OPD."
-                            : "✕ Profiling ditolak. OPD mendapat notifikasi untuk perbaikan."}
+                        {done === "approved" ? (
+                            <>
+                                <CircleCheck
+                                    size={16}
+                                    className="mr-1 inline"
+                                />{" "}
+                                Profiling berhasil disetujui dan tersimpan ke
+                                riwayat OPD.
+                            </>
+                        ) : (
+                            "✕ Profiling ditolak. OPD mendapat notifikasi untuk perbaikan."
+                        )}
                     </InfoBox>
                 </div>
             )}
@@ -3304,11 +3365,17 @@ function VerifikasiProfiling() {
                 <div className="lg:col-span-2 space-y-3">
                     <div className="flex gap-2">
                         <FSelect
-                            options={["Semua Status", "Diajukan", "Ditolak"]}
+                            options={["Semua Status", "Diajukan"]}
+                            value={statusFilter}
+                            onChange={setStatusFilter}
                         />
-                        <FSelect options={["Sep 2026", "Ags 2026"]} />
+                        <FSelect
+                            options={["Semua Bulan", "Sep 2026", "Ags 2026"]}
+                            value={monthFilter}
+                            onChange={setMonthFilter}
+                        />
                     </div>
-                    {profilingQueue.map((p) => (
+                    {filteredProfilings.map((p) => (
                         <Card
                             key={p.id}
                             className={clx(
@@ -3346,10 +3413,10 @@ function VerifikasiProfiling() {
                             </div>
                         </Card>
                     ))}
-                    {profilingQueue.length === 0 && (
+                    {filteredProfilings.length === 0 && (
                         <Card className="p-8 text-center">
                             <p className="text-slate-400 text-sm">
-                                Tidak ada profiling dalam antrean.
+                                Tidak ada profiling yang sesuai filter.
                             </p>
                         </Card>
                     )}
@@ -3430,8 +3497,12 @@ function VerifikasiProfiling() {
 
                             {/* Kewajaran */}
                             <div className="border border-slate-200 rounded-2xl p-4 space-y-3">
-                                <p className="font-bold text-slate-700 text-sm">
-                                    📊 Pemeriksaan Kewajaran Data
+                                <p className="flex items-center gap-2 font-bold text-slate-700 text-sm">
+                                    <Activity
+                                        size={16}
+                                        className="text-blue-600"
+                                    />{" "}
+                                    Pemeriksaan Kewajaran Data
                                 </p>
                                 <div
                                     className={clx(
@@ -3441,8 +3512,19 @@ function VerifikasiProfiling() {
                                             : "bg-amber-50 border border-amber-200",
                                     )}
                                 >
-                                    <span className="text-lg">
-                                        {wajar ? "✅" : "⚠️"}
+                                    <span
+                                        className={clx(
+                                            "mt-0.5",
+                                            wajar
+                                                ? "text-emerald-600"
+                                                : "text-amber-600",
+                                        )}
+                                    >
+                                        {wajar ? (
+                                            <CircleCheck size={18} />
+                                        ) : (
+                                            <AlertTriangle size={18} />
+                                        )}
                                     </span>
                                     <div>
                                         <p
@@ -3477,24 +3559,32 @@ function VerifikasiProfiling() {
                                     <button
                                         onClick={() => setKewajaranOk(true)}
                                         className={clx(
-                                            "flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all cursor-pointer",
+                                            "flex flex-1 items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all cursor-pointer",
                                             kewajaranOk === true
                                                 ? "border-green-500 bg-green-50 text-green-700"
                                                 : "border-slate-200 hover:border-green-300 text-slate-500",
                                         )}
                                     >
-                                        ✅ Data Wajar
+                                        <CircleCheck
+                                            size={16}
+                                            aria-hidden="true"
+                                        />{" "}
+                                        Data Wajar
                                     </button>
                                     <button
                                         onClick={() => setKewajaranOk(false)}
                                         className={clx(
-                                            "flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all cursor-pointer",
+                                            "flex flex-1 items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all cursor-pointer",
                                             kewajaranOk === false
                                                 ? "border-red-400 bg-red-50 text-red-700"
                                                 : "border-slate-200 hover:border-red-300 text-slate-500",
                                         )}
                                     >
-                                        ⚠ Meragukan
+                                        <AlertTriangle
+                                            size={16}
+                                            aria-hidden="true"
+                                        />{" "}
+                                        Meragukan
                                     </button>
                                 </div>
                                 {kewajaranOk === false && (
@@ -3537,7 +3627,7 @@ function VerifikasiProfiling() {
                                     disabled={!canSubmit}
                                     onClick={() => setDecisionModal("approve")}
                                 >
-                                    ✅ Setujui Profiling
+                                    <CircleCheck size={16} /> Setujui Profiling
                                 </Btn>
                                 <Btn
                                     variant="danger"
@@ -3550,7 +3640,10 @@ function VerifikasiProfiling() {
                         </Card>
                     ) : (
                         <Card className="p-12 flex flex-col items-center justify-center text-center h-64">
-                            <div className="text-4xl mb-3">📋</div>
+                            <ClipboardCheck
+                                size={32}
+                                className="mb-3 text-slate-400"
+                            />
                             <p className="font-semibold text-slate-600">
                                 Pilih profiling untuk ditinjau
                             </p>
@@ -3660,12 +3753,15 @@ function VerifikasiProfiling() {
 function KelolaTicket() {
     const [sel, setSel] = useState<(typeof ticketList)[0] | null>(null);
     const [filter, setFilter] = useState("Semua Status");
+    const [opdFilter, setOpdFilter] = useState("Semua OPD");
     const [action, setAction] = useState<"internal" | "teruskan" | null>(null);
     const [vendor, setVendor] = useState("CV Jaringan Sejahtera");
     const [actionDone, setActionDone] = useState(false);
 
     const filtered = ticketList.filter(
-        (t) => filter === "Semua Status" || t.status === filter,
+        (t) =>
+            (filter === "Semua Status" || t.status === filter) &&
+            (opdFilter === "Semua OPD" || t.opd === opdFilter),
     );
 
     return (
@@ -3686,15 +3782,25 @@ function KelolaTicket() {
                                 "Selesai",
                             ]}
                             value={filter}
-                            onChange={setFilter}
+                            onChange={(value) => {
+                                setFilter(value);
+                                setSel(null);
+                            }}
                         />
                         <FSelect
                             options={[
                                 "Semua OPD",
-                                "Dinas PUPR",
-                                "Dinas Sosial",
-                                "BKD",
+                                ...Array.from(
+                                    new Set(
+                                        ticketList.map((ticket) => ticket.opd),
+                                    ),
+                                ),
                             ]}
+                            value={opdFilter}
+                            onChange={(value) => {
+                                setOpdFilter(value);
+                                setSel(null);
+                            }}
                         />
                     </div>
                     {filtered.map((t) => (
@@ -3927,7 +4033,7 @@ function KelolaTicket() {
                         </Card>
                     ) : (
                         <Card className="p-12 flex flex-col items-center justify-center text-center h-64">
-                            <div className="text-4xl mb-3">🎫</div>
+                            <Ticket size={32} className="mb-3 text-slate-400" />
                             <p className="font-semibold text-slate-600">
                                 Pilih tiket untuk ditinjau
                             </p>
@@ -3944,7 +4050,7 @@ function KelolaTicket() {
 }
 
 // ─── Laporan ──────────────────────────────────────────────────────────────────
-function Laporan() {
+function LaporanLegacy() {
     return (
         <div>
             <PageHeader
@@ -3952,8 +4058,12 @@ function Laporan() {
                 sub="Rekap dan ekspor data kondisi jaringan seluruh OPD"
                 action={
                     <>
-                        <Btn variant="secondary">📥 Excel</Btn>
-                        <Btn variant="secondary">📄 PDF</Btn>
+                        <Btn variant="secondary">
+                            <FileSpreadsheet size={16} /> Excel
+                        </Btn>
+                        <Btn variant="secondary">
+                            <FileDown size={16} /> PDF
+                        </Btn>
                     </>
                 }
             />
@@ -4211,6 +4321,409 @@ function Laporan() {
     );
 }
 
+function Laporan() {
+    const [year, setYear] = useState("2026");
+    const [period, setPeriod] = useState("Semua Bulan");
+    const [opd, setOpd] = useState("Semua OPD");
+    const reportRows = [
+        {
+            opd: "Dinas Pendidikan",
+            bandwidth: "100 Mbps",
+            kondisi: "Baik",
+            dl: 87,
+            ul: 34,
+            tiket: 0,
+            profiling: "Diverifikasi",
+            year: 2026,
+            month: 9,
+            baik: 80,
+            sedang: 15,
+            buruk: 5,
+        },
+        {
+            opd: "Dinas Kesehatan",
+            bandwidth: "100 Mbps",
+            kondisi: "Sedang",
+            dl: 61,
+            ul: 28,
+            tiket: 1,
+            profiling: "Diajukan",
+            year: 2026,
+            month: 9,
+            baik: 65,
+            sedang: 25,
+            buruk: 10,
+        },
+        {
+            opd: "Dinas PUPR",
+            bandwidth: "50 Mbps",
+            kondisi: "Buruk",
+            dl: 12,
+            ul: 5,
+            tiket: 2,
+            profiling: "Diverifikasi",
+            year: 2026,
+            month: 8,
+            baik: 55,
+            sedang: 30,
+            buruk: 15,
+        },
+        {
+            opd: "Dinas Perhubungan",
+            bandwidth: "200 Mbps",
+            kondisi: "Baik",
+            dl: 178,
+            ul: 89,
+            tiket: 0,
+            profiling: "Diverifikasi",
+            year: 2026,
+            month: 7,
+            baik: 90,
+            sedang: 8,
+            buruk: 2,
+        },
+        {
+            opd: "BKD",
+            bandwidth: "50 Mbps",
+            kondisi: "Sedang",
+            dl: 38,
+            ul: 19,
+            tiket: 1,
+            profiling: "Diajukan",
+            year: 2026,
+            month: 9,
+            baik: 70,
+            sedang: 20,
+            buruk: 10,
+        },
+    ];
+    const months = [
+        "Januari",
+        "Februari",
+        "Maret",
+        "April",
+        "Mei",
+        "Juni",
+        "Juli",
+        "Agustus",
+        "September",
+        "Oktober",
+        "November",
+        "Desember",
+    ];
+    const periods = ["Semua Bulan", ...months, "Q1", "Q2", "Q3", "Q4"];
+    const periodMonths: Record<string, number[]> = {
+        Q1: [1, 2, 3],
+        Q2: [4, 5, 6],
+        Q3: [7, 8, 9],
+        Q4: [10, 11, 12],
+    };
+    const selectedMonths =
+        periodMonths[period] ??
+        (period === "Semua Bulan" ? null : [months.indexOf(period) + 1]);
+    const filtered = reportRows.filter(
+        (row) =>
+            row.year === Number(year) &&
+            (!selectedMonths || selectedMonths.includes(row.month)) &&
+            (opd === "Semua OPD" || row.opd === opd),
+    );
+    const average = (key: "baik" | "sedang" | "buruk") =>
+        filtered.length
+            ? `${Math.round(filtered.reduce((total, row) => total + row[key], 0) / filtered.length)}%`
+            : "0%";
+    const exportRows = filtered.map(
+        ({ opd: nama, bandwidth, kondisi, dl, ul, tiket, profiling }) => ({
+            OPD: nama,
+            Bandwidth: bandwidth,
+            Kondisi: kondisi,
+            "Download (Mbps)": dl,
+            "Upload (Mbps)": ul,
+            "Tiket Aktif": tiket,
+            "Status Profiling": profiling,
+        }),
+    );
+    const exportExcel = async () => {
+        const { default: ExcelJS } = await import("exceljs");
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Rekap Jaringan");
+        worksheet.columns = [
+            { header: "OPD", key: "OPD", width: 30 },
+            { header: "Bandwidth", key: "Bandwidth", width: 16 },
+            { header: "Kondisi", key: "Kondisi", width: 16 },
+            { header: "Download (Mbps)", key: "Download (Mbps)", width: 20 },
+            { header: "Upload (Mbps)", key: "Upload (Mbps)", width: 18 },
+            { header: "Tiket Aktif", key: "Tiket Aktif", width: 14 },
+            { header: "Status Profiling", key: "Status Profiling", width: 20 },
+        ];
+        worksheet.addRows(exportRows);
+        worksheet.getRow(1).font = { bold: true, color: { argb: "FF1E3A8A" } };
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `Laporan-SIPROJAR-${year}-${period.replaceAll(" ", "-")}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+    const exportPdf = () => {
+        const popup = window.open("", "_blank");
+        if (!popup) return;
+        const cells = exportRows
+            .map(
+                (row) =>
+                    `<tr>${Object.values(row)
+                        .map((value) => `<td>${String(value)}</td>`)
+                        .join("")}</tr>`,
+            )
+            .join("");
+        popup.document.write(
+            `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Laporan SIPROJAR</title><style>body{font:14px Arial,sans-serif;padding:32px;color:#0f172a}h1{color:#1e3a8a}table{border-collapse:collapse;width:100%;margin-top:24px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#eff6ff}@media print{body{padding:0}}</style></head><body><h1>Laporan Kondisi Jaringan SIPROJAR</h1><p>Tahun ${year} · ${period} · ${opd}</p><p>Total OPD: ${filtered.length} | Tiket aktif: ${filtered.reduce((total, row) => total + row.tiket, 0)}</p><table><thead><tr><th>OPD</th><th>Bandwidth</th><th>Kondisi</th><th>Download</th><th>Upload</th><th>Tiket Aktif</th><th>Status Profiling</th></tr></thead><tbody>${cells || "<tr><td colspan='7'>Tidak ada data pada filter ini</td></tr>"}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`,
+        );
+        popup.document.close();
+    };
+
+    return (
+        <div>
+            <PageHeader
+                title="Laporan Kondisi Jaringan"
+                sub="Rekap kondisi jaringan sesuai tahun, periode, dan OPD yang dipilih"
+                action={
+                    <>
+                        <Btn
+                            variant="secondary"
+                            className="shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                            onClick={exportExcel}
+                        >
+                            <FileSpreadsheet size={16} /> Excel
+                        </Btn>
+                        <Btn
+                            variant="secondary"
+                            className="shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                            onClick={exportPdf}
+                        >
+                            <FileDown size={16} /> PDF
+                        </Btn>
+                    </>
+                }
+            />
+            <div className="mb-6 flex flex-wrap gap-3">
+                <div className="min-w-32">
+                    <FSelect
+                        label="Tahun"
+                        options={["2026", "2025", "2024"]}
+                        value={year}
+                        onChange={setYear}
+                    />
+                </div>
+                <div className="min-w-44">
+                    <FSelect
+                        label="Periode / Bulan"
+                        options={periods}
+                        value={period}
+                        onChange={setPeriod}
+                    />
+                </div>
+                <div className="min-w-52">
+                    <FSelect
+                        label="OPD"
+                        options={[
+                            "Semua OPD",
+                            ...reportRows.map((row) => row.opd),
+                        ]}
+                        value={opd}
+                        onChange={setOpd}
+                    />
+                </div>
+            </div>
+            <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <StatCard
+                    label="OPD dalam filter"
+                    value={filtered.length}
+                    icon={<Building2 size={20} />}
+                    color="blue"
+                />
+                <StatCard
+                    label="Kondisi Baik"
+                    value={average("baik")}
+                    icon={<CheckCircle2 size={20} />}
+                    color="green"
+                />
+                <StatCard
+                    label="Kondisi Sedang"
+                    value={average("sedang")}
+                    icon={<AlertTriangle size={20} />}
+                    color="amber"
+                />
+                <StatCard
+                    label="Kondisi Buruk"
+                    value={average("buruk")}
+                    icon={<XCircle size={20} />}
+                    color="red"
+                />
+            </div>
+            {filtered.length === 0 ? (
+                <Card className="p-10 text-center text-sm text-slate-500">
+                    Tidak ada data untuk kombinasi filter yang dipilih.
+                </Card>
+            ) : (
+                <>
+                    <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <Card className="p-5">
+                            <h3 className="mb-4 text-sm font-bold text-slate-700">
+                                Kondisi jaringan{" "}
+                                {opd === "Semua OPD" ? "per OPD" : `- ${opd}`}
+                            </h3>
+                            <ResponsiveContainer width="100%" height={240}>
+                                <BarChart
+                                    data={filtered}
+                                    layout="vertical"
+                                    barSize={13}
+                                >
+                                    <CartesianGrid
+                                        strokeDasharray="3 3"
+                                        stroke="#f1f5f9"
+                                        horizontal={false}
+                                    />
+                                    <XAxis
+                                        type="number"
+                                        domain={[0, 100]}
+                                        tick={{ fontSize: 10, fill: "#94a3b8" }}
+                                    />
+                                    <YAxis
+                                        dataKey="opd"
+                                        type="category"
+                                        tick={{ fontSize: 10, fill: "#64748b" }}
+                                        width={110}
+                                    />
+                                    <Tooltip />
+                                    <Bar
+                                        dataKey="baik"
+                                        name="Baik (%)"
+                                        stackId="condition"
+                                        fill="#34d399"
+                                    />
+                                    <Bar
+                                        dataKey="sedang"
+                                        name="Sedang (%)"
+                                        stackId="condition"
+                                        fill="#fbbf24"
+                                    />
+                                    <Bar
+                                        dataKey="buruk"
+                                        name="Buruk (%)"
+                                        stackId="condition"
+                                        fill="#f87171"
+                                    />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </Card>
+                        <Card className="p-5">
+                            <h3 className="mb-4 text-sm font-bold text-slate-700">
+                                Tiket aktif{" "}
+                                {opd === "Semua OPD" ? "per OPD" : `- ${opd}`}
+                            </h3>
+                            <ResponsiveContainer width="100%" height={240}>
+                                <BarChart data={filtered}>
+                                    <CartesianGrid
+                                        strokeDasharray="3 3"
+                                        stroke="#f1f5f9"
+                                    />
+                                    <XAxis
+                                        dataKey="opd"
+                                        tick={{ fontSize: 10, fill: "#64748b" }}
+                                    />
+                                    <YAxis
+                                        allowDecimals={false}
+                                        tick={{ fontSize: 10, fill: "#94a3b8" }}
+                                    />
+                                    <Tooltip />
+                                    <Bar
+                                        dataKey="tiket"
+                                        name="Tiket aktif"
+                                        fill="#60a5fa"
+                                        radius={[4, 4, 0, 0]}
+                                    />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </Card>
+                    </div>
+                    <Card>
+                        <div className="border-b border-slate-100 p-4">
+                            <h3 className="text-sm font-bold text-slate-700">
+                                Rekap detail kondisi jaringan OPD
+                            </h3>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[760px] text-sm">
+                                <thead>
+                                    <tr className="border-b border-slate-100">
+                                        {[
+                                            "OPD",
+                                            "Bandwidth",
+                                            "Kondisi",
+                                            "DL (Mbps)",
+                                            "UL (Mbps)",
+                                            "Tiket Aktif",
+                                            "Status Profiling",
+                                        ].map((heading) => (
+                                            <th
+                                                key={heading}
+                                                className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-400"
+                                            >
+                                                {heading}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filtered.map((row) => (
+                                        <tr
+                                            key={row.opd}
+                                            className="border-b border-slate-50 hover:bg-blue-50/30"
+                                        >
+                                            <td className="px-4 py-3.5 font-semibold text-slate-800">
+                                                {row.opd}
+                                            </td>
+                                            <td className="px-4 py-3.5 text-slate-500">
+                                                {row.bandwidth}
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                {statusBadge(row.kondisi)}
+                                            </td>
+                                            <td className="px-4 py-3.5 font-mono">
+                                                {row.dl}
+                                            </td>
+                                            <td className="px-4 py-3.5 font-mono">
+                                                {row.ul}
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                {row.tiket ? (
+                                                    <Badge
+                                                        label={`${row.tiket} aktif`}
+                                                        color="red"
+                                                    />
+                                                ) : (
+                                                    "—"
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                {statusBadge(row.profiling)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+                </>
+            )}
+        </div>
+    );
+}
+
 // ─── Dashboard OPD ────────────────────────────────────────────────────────────
 function DashboardOPD({ onNav }: { onNav: (s: Screen) => void }) {
     return (
@@ -4408,7 +4921,7 @@ function TiketPengaduan() {
         return (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
                 <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-4xl mb-5">
-                    🎫
+                    <Ticket size={20} />
                 </div>
                 <h2 className="text-2xl font-extrabold text-slate-800 mb-2">
                     Tiket Berhasil Diajukan!
@@ -4815,8 +5328,24 @@ function DashboardVendor({ onNav }: { onNav: (s: Screen) => void }) {
 function TiketMasuk() {
     const mine = ticketList.filter((t) => t.vendor === "CV Jaringan Sejahtera");
     const [sel, setSel] = useState<(typeof mine)[0] | null>(null);
-    const [accepted, setAccepted] = useState<Record<string, boolean>>({});
-    const [rejected, setRejected] = useState<Record<string, boolean>>({});
+    const [accepted, setAccepted] = useState<Record<string, boolean>>(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.vendorAccepted") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
+    const [rejected, setRejected] = useState<Record<string, boolean>>(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.vendorRejected") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
     const [rejectReason, setRejectReason] = useState("");
     const [showRejectForm, setShowRejectForm] = useState(false);
 
@@ -4851,7 +5380,13 @@ function TiketMasuk() {
                                             <span className="font-mono text-xs text-slate-400">
                                                 {t.id}
                                             </span>
-                                            {statusBadge(t.status)}
+                                            {statusBadge(
+                                                isAcc
+                                                    ? "Proses"
+                                                    : isRej
+                                                      ? "Ditolak"
+                                                      : t.status,
+                                            )}
                                         </div>
                                         <p className="font-semibold text-slate-800 text-sm">
                                             {t.kendala}
@@ -4861,17 +5396,19 @@ function TiketMasuk() {
                                         </p>
                                         {isAcc && (
                                             <div className="mt-2 flex items-center gap-1.5 text-green-600 text-xs font-bold">
-                                                <span className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center text-[10px]">
-                                                    ✓
-                                                </span>
+                                                <CheckCircle2
+                                                    size={17}
+                                                    aria-hidden="true"
+                                                />
                                                 Tiket Diterima — Sedang Diproses
                                             </div>
                                         )}
                                         {isRej && (
                                             <div className="mt-2 flex items-center gap-1.5 text-red-500 text-xs font-bold">
-                                                <span className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center text-[10px]">
-                                                    ✕
-                                                </span>
+                                                <XCircle
+                                                    size={17}
+                                                    aria-hidden="true"
+                                                />
                                                 Tiket Ditolak
                                             </div>
                                         )}
@@ -4898,7 +5435,13 @@ function TiketMasuk() {
                                     </p>
                                 </div>
                                 <div className="flex flex-col gap-1 items-end">
-                                    {statusBadge(sel.status)}
+                                    {statusBadge(
+                                        accepted[sel.id]
+                                            ? "Proses"
+                                            : rejected[sel.id]
+                                              ? "Ditolak"
+                                              : sel.status,
+                                    )}
                                     <Badge
                                         label={sel.prioritas}
                                         color={
@@ -4943,7 +5486,10 @@ function TiketMasuk() {
 
                             {accepted[sel.id] && (
                                 <div className="bg-green-50 border border-green-200 rounded-2xl p-5 text-center">
-                                    <div className="text-3xl mb-2">✅</div>
+                                    <CheckCircle2
+                                        size={30}
+                                        className="mx-auto mb-2 text-emerald-600"
+                                    />
                                     <p className="font-bold text-green-700">
                                         Tiket Telah Diterima
                                     </p>
@@ -4957,7 +5503,10 @@ function TiketMasuk() {
                             )}
                             {rejected[sel.id] && (
                                 <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center">
-                                    <div className="text-3xl mb-2">✕</div>
+                                    <XCircle
+                                        size={30}
+                                        className="mx-auto mb-2 text-red-600"
+                                    />
                                     <p className="font-bold text-red-600">
                                         Tiket Telah Ditolak
                                     </p>
@@ -4988,12 +5537,21 @@ function TiketMasuk() {
                                             <div className="flex gap-3 flex-wrap">
                                                 <Btn
                                                     variant="success"
-                                                    onClick={() =>
-                                                        setAccepted({
+                                                    onClick={() => {
+                                                        const nextAccepted = {
                                                             ...accepted,
                                                             [sel.id]: true,
-                                                        })
-                                                    }
+                                                        };
+                                                        setAccepted(
+                                                            nextAccepted,
+                                                        );
+                                                        localStorage.setItem(
+                                                            "siprojar.vendorAccepted",
+                                                            JSON.stringify(
+                                                                nextAccepted,
+                                                            ),
+                                                        );
+                                                    }}
                                                 >
                                                     <CheckCircle2 size={16} />{" "}
                                                     Terima & Mulai Proses
@@ -5024,10 +5582,20 @@ function TiketMasuk() {
                                                             !rejectReason.trim()
                                                         }
                                                         onClick={() => {
-                                                            setRejected({
-                                                                ...rejected,
-                                                                [sel.id]: true,
-                                                            });
+                                                            const nextRejected =
+                                                                {
+                                                                    ...rejected,
+                                                                    [sel.id]: true,
+                                                                };
+                                                            setRejected(
+                                                                nextRejected,
+                                                            );
+                                                            localStorage.setItem(
+                                                                "siprojar.vendorRejected",
+                                                                JSON.stringify(
+                                                                    nextRejected,
+                                                                ),
+                                                            );
                                                             setShowRejectForm(
                                                                 false,
                                                             );
@@ -5082,11 +5650,41 @@ function TiketMasuk() {
 function UpdatePenanganan() {
     const [status, setStatus] = useState("Proses");
     const [note, setNote] = useState("");
+    const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+    const [fileError, setFileError] = useState("");
     const [selTicket, setSelTicket] = useState("TKT-002");
     const [done, setDone] = useState(false);
-    const mine = ticketList.filter(
-        (t) => t.vendor === "CV Jaringan Sejahtera" && t.status !== "Selesai",
-    );
+    const [ticketStatuses, setTicketStatuses] = useState<
+        Record<string, string>
+    >(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.vendorTicketStatuses") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
+    const [accepted, setAccepted] = useState<Record<string, boolean>>(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.vendorAccepted") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
+    const mine = ticketList.filter((ticket) => {
+        const currentStatus = ticketStatuses[ticket.id] ?? ticket.status;
+        const wasAccepted =
+            accepted[ticket.id] && currentStatus === "Diteruskan";
+        return (
+            ticket.vendor === "CV Jaringan Sejahtera" &&
+            (currentStatus === "Proses" || wasAccepted) &&
+            currentStatus !== "Menunggu Verifikasi" &&
+            currentStatus !== "Selesai"
+        );
+    });
     const t = ticketList.find((x) => x.id === selTicket);
 
     if (done)
@@ -5146,7 +5744,10 @@ function UpdatePenanganan() {
                                         {t.opd} · {t.tanggal}
                                     </p>
                                 </div>
-                                {statusBadge(t.status)}
+                                {statusBadge(
+                                    ticketStatuses[t.id] ??
+                                        (accepted[t.id] ? "Proses" : t.status),
+                                )}
                             </label>
                         ))}
                     </div>
@@ -5187,7 +5788,11 @@ function UpdatePenanganan() {
                         {status === "Selesai" && (
                             <div className="border-2 border-dashed border-blue-200 rounded-2xl p-6 bg-blue-50/50 space-y-4">
                                 <InfoBox type="warn">
-                                    ⚠ Bukti penanganan <strong>wajib</strong>{" "}
+                                    <AlertTriangle
+                                        size={15}
+                                        className="mr-1 inline"
+                                    />{" "}
+                                    Bukti penanganan <strong>wajib</strong>{" "}
                                     diunggah untuk status Selesai. Tanpa bukti,
                                     Admin tidak dapat menutup tiket.
                                 </InfoBox>
@@ -5201,27 +5806,89 @@ function UpdatePenanganan() {
                                         screenshot speed test terbaru, atau
                                         dokumentasi teknis lainnya.
                                     </p>
-                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all">
-                                        <div className="text-3xl mb-2">📎</div>
-                                        <p className="text-sm text-slate-500">
-                                            Klik atau seret file ke sini
+                                    <label className="block border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all">
+                                        <FileUp
+                                            size={26}
+                                            className="mx-auto mb-2 text-blue-600"
+                                        />
+                                        <span className="block text-sm text-slate-600">
+                                            Klik untuk memilih bukti penanganan
+                                        </span>
+                                        <span className="mt-1 block text-xs text-slate-400">
+                                            JPG, PNG, PDF — maksimal 5 MB
+                                        </span>
+                                        <input
+                                            type="file"
+                                            accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                                            className="sr-only"
+                                            onChange={(event) => {
+                                                const selectedFile =
+                                                    event.target.files?.[0] ??
+                                                    null;
+                                                if (!selectedFile) return;
+                                                const allowed =
+                                                    /\.(jpe?g|png|pdf)$/i.test(
+                                                        selectedFile.name,
+                                                    );
+                                                if (
+                                                    !allowed ||
+                                                    selectedFile.size >
+                                                        5 * 1024 * 1024
+                                                ) {
+                                                    setFileError(
+                                                        "Pilih file JPG, PNG, atau PDF maksimal 5 MB.",
+                                                    );
+                                                    setEvidenceFile(null);
+                                                    event.target.value = "";
+                                                    return;
+                                                }
+                                                setFileError("");
+                                                setEvidenceFile(selectedFile);
+                                            }}
+                                        />
+                                    </label>
+                                    {fileError && (
+                                        <p className="text-sm text-red-600">
+                                            {fileError}
                                         </p>
-                                        <p className="text-xs text-slate-400 mt-1">
-                                            JPG, PNG, PDF — maks. 5 MB per file
+                                    )}
+                                    {evidenceFile && (
+                                        <p className="flex items-center gap-2 text-sm text-emerald-700">
+                                            <FileText size={16} />{" "}
+                                            {evidenceFile.name}
                                         </p>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
                         )}
 
                         <div className="flex gap-3 pt-2">
                             <Btn
-                                disabled={!note.trim()}
-                                onClick={() => setDone(true)}
+                                disabled={
+                                    !note.trim() ||
+                                    (status === "Selesai" && !evidenceFile)
+                                }
+                                onClick={() => {
+                                    const nextStatuses = {
+                                        ...ticketStatuses,
+                                        [selTicket]:
+                                            status === "Selesai"
+                                                ? "Menunggu Verifikasi"
+                                                : "Proses",
+                                    };
+                                    localStorage.setItem(
+                                        "siprojar.vendorTicketStatuses",
+                                        JSON.stringify(nextStatuses),
+                                    );
+                                    setTicketStatuses(nextStatuses);
+                                    setDone(true);
+                                }}
                             >
-                                📤 Kirim Update
+                                <Upload size={15} /> Kirim Update
                             </Btn>
-                            <Btn variant="secondary">💾 Simpan Draft</Btn>
+                            <Btn variant="secondary">
+                                <Save size={15} /> Simpan Draft
+                            </Btn>
                         </div>
                     </Card>
                 )}
@@ -5232,8 +5899,37 @@ function UpdatePenanganan() {
 
 // ─── Verifikasi Penanganan ────────────────────────────────────────────────────
 function VerifikasiPenanganan() {
-    const done = ticketList.filter((t) => t.status === "Selesai");
-    const [closed, setClosed] = useState<string[]>([]);
+    const [ticketOverrides, setTicketOverrides] = useState<
+        Record<string, "Proses" | "Ditutup">
+    >(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.ticketOverrides") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
+    const [confirmClose, setConfirmClose] = useState<string | null>(null);
+    const [notice, setNotice] = useState("");
+    const done = ticketList.filter(
+        (ticket) =>
+            ticket.status === "Selesai" &&
+            ticketOverrides[ticket.id] !== "Proses",
+    );
+    const persistOverride = (
+        ticketId: string,
+        status: "Proses" | "Ditutup",
+    ) => {
+        setTicketOverrides((current) => {
+            const next = { ...current, [ticketId]: status };
+            localStorage.setItem(
+                "siprojar.ticketOverrides",
+                JSON.stringify(next),
+            );
+            return next;
+        });
+    };
     return (
         <div>
             <PageHeader
@@ -5246,7 +5942,9 @@ function VerifikasiPenanganan() {
                         key={t.id}
                         className={clx(
                             "p-5",
-                            closed.includes(t.id) ? "opacity-60" : "",
+                            ticketOverrides[t.id] === "Ditutup"
+                                ? "opacity-70"
+                                : "",
                         )}
                     >
                         <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
@@ -5255,7 +5953,11 @@ function VerifikasiPenanganan() {
                                     <span className="font-mono text-xs text-slate-400">
                                         {t.id}
                                     </span>
-                                    {statusBadge(t.status)}
+                                    {ticketOverrides[t.id] === "Ditutup" ? (
+                                        <Badge label="Ditutup" color="green" />
+                                    ) : (
+                                        statusBadge(t.status)
+                                    )}
                                 </div>
                                 <h3 className="font-bold text-slate-800">
                                     {t.kendala}
@@ -5265,18 +5967,24 @@ function VerifikasiPenanganan() {
                                     Sep 2026
                                 </p>
                             </div>
-                            {!closed.includes(t.id) ? (
+                            {ticketOverrides[t.id] !== "Ditutup" ? (
                                 <div className="flex gap-2 flex-wrap">
                                     <Btn
                                         variant="success"
-                                        onClick={() =>
-                                            setClosed([...closed, t.id])
-                                        }
+                                        onClick={() => setConfirmClose(t.id)}
                                     >
                                         <CheckCircle2 size={16} /> Setujui &
                                         Tutup Tiket
                                     </Btn>
-                                    <Btn variant="secondary">
+                                    <Btn
+                                        variant="secondary"
+                                        onClick={() => {
+                                            persistOverride(t.id, "Proses");
+                                            setNotice(
+                                                `${t.id} dikembalikan ke status Proses.`,
+                                            );
+                                        }}
+                                    >
                                         <RotateCcw size={16} /> Kembalikan ke
                                         Proses
                                     </Btn>
@@ -5284,7 +5992,11 @@ function VerifikasiPenanganan() {
                             ) : (
                                 <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2">
                                     <span className="text-teal-600 font-bold text-sm">
-                                        ✓ Tiket Ditutup
+                                        <CheckCircle2
+                                            size={15}
+                                            className="mr-1 inline"
+                                        />{" "}
+                                        Tiket Ditutup
                                     </span>
                                 </div>
                             )}
@@ -5368,6 +6080,49 @@ function VerifikasiPenanganan() {
                     </Card>
                 )}
             </div>
+            {notice && (
+                <div className="mt-4">
+                    <InfoBox type="info">{notice}</InfoBox>
+                </div>
+            )}
+            {confirmClose && (
+                <Modal
+                    title="Konfirmasi Penutupan Tiket"
+                    onClose={() => setConfirmClose(null)}
+                >
+                    <div className="space-y-4 p-6">
+                        <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                            <CircleHelp
+                                size={20}
+                                className="mt-0.5 shrink-0 text-blue-700"
+                            />
+                            <p className="text-sm text-slate-700">
+                                Yakin ingin menyetujui hasil penanganan dan
+                                menutup tiket <strong>{confirmClose}</strong>?
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <Btn
+                                onClick={() => {
+                                    persistOverride(confirmClose, "Ditutup");
+                                    setNotice(
+                                        `${confirmClose} berhasil ditutup.`,
+                                    );
+                                    setConfirmClose(null);
+                                }}
+                            >
+                                <CheckCircle2 size={16} /> Ya, Tutup Tiket
+                            </Btn>
+                            <Btn
+                                variant="secondary"
+                                onClick={() => setConfirmClose(null)}
+                            >
+                                Batal
+                            </Btn>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }

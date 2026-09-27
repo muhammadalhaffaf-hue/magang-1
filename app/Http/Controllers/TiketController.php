@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -45,6 +46,22 @@ class TiketController extends Controller
         return Inertia::render('Tiket/Show', ['ticket' => $tiket->load(['kendala.profiling.opd', 'pihakKetiga', 'riwayat.user']), 'role' => Auth::user()->role]);
     }
 
+    public function downloadEvidence(RiwayatTiket $riwayat)
+    {
+        abort_unless(filled($riwayat->bukti_file), 404);
+        $this->authorizeTicket($riwayat->tiket);
+
+        $configuredRoot = config('filesystems.disks.local.root');
+        $privateRoot = is_string($configuredRoot) ? realpath($configuredRoot) : false;
+        $filePath = $privateRoot ? realpath($privateRoot . DIRECTORY_SEPARATOR . $riwayat->bukti_file) : false;
+        abort_unless(
+            $privateRoot && $filePath && str_starts_with($filePath, $privateRoot . DIRECTORY_SEPARATOR) && is_file($filePath),
+            404,
+        );
+
+        return response()->download($filePath, basename($filePath));
+    }
+
     public function forward(Request $request, Tiket $tiket): RedirectResponse
     {
         abort_unless(Auth::user()->role === 'admin' && $tiket->status === 'baru', 403);
@@ -63,7 +80,7 @@ class TiketController extends Controller
         abort_unless($tiket->status !== 'selesai', 422);
         if ($data['status'] === 'menunggu_verifikasi') $request->validate(['bukti_file' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120']]);
         if ($data['status'] === 'selesai') abort_unless($tiket->riwayat()->whereNotNull('bukti_file')->exists() || $request->hasFile('bukti_file'), 422, 'Bukti penanganan wajib tersedia sebelum tiket diselesaikan.');
-        $path = $request->hasFile('bukti_file') ? $request->file('bukti_file')->store('bukti-tiket', 'public') : null;
+        $path = $request->hasFile('bukti_file') ? $request->file('bukti_file')->store('bukti-tiket', 'local') : null;
         $tiket->update(['status' => $data['status']]);
         $this->history($tiket, $data['catatan'], $data['status'], $path);
         return back()->with('success', 'Status tiket berhasil diperbarui.');
@@ -71,7 +88,7 @@ class TiketController extends Controller
 
     private function history(Tiket $tiket, string $catatan, string $status, ?string $path = null): void
     {
-        RiwayatTiket::create(['tiket_id' => $tiket->id, 'user_id' => Auth::id(), 'catatan' => $catatan, 'status_baru' => $status, 'bukti_file' => $path]);
+        RiwayatTiket::create(['tiket_id' => $tiket->id, 'user_id' => Auth::id(), 'catatan' => $catatan, 'status_baru' => $status, 'bukti_file' => $path, 'tanggal' => now()]);
     }
     private function authorizeTicket(Tiket $tiket): void
     {

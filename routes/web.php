@@ -69,6 +69,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::get('/tiket', [TiketController::class, 'index'])->name('tiket.index');
     Route::get('/tiket/{tiket}', [TiketController::class, 'show'])->name('tiket.show');
+    Route::get('/tiket/bukti/{riwayat}', [TiketController::class, 'downloadEvidence'])->name('tiket.evidence');
 });
 
 require __DIR__ . '/auth.php';

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class RiwayatTiket extends Model
 {
-    const UPDATED_AT = null;
+    public $timestamps = false;
     protected $table = 'riwayat_tiket';
     protected $fillable = ['tiket_id', 'user_id', 'catatan', 'bukti_file', 'status_baru', 'tanggal'];
     protected $casts = ['tanggal' => 'datetime'];
