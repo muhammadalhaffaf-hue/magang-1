@@ -20,6 +20,7 @@ import {
     FileSpreadsheet,
     FilePenLine,
     FileText,
+    FileUp,
     FolderClock,
     Gauge,
     HeartCrack,
@@ -100,6 +101,78 @@ const kondisiPie = [
     { name: "Baik", value: 68, color: "#22c55e" },
     { name: "Sedang", value: 22, color: "#f59e0b" },
     { name: "Buruk", value: 10, color: "#ef4444" },
+];
+const reportRows = [
+    {
+        opd: "Dinas Pendidikan",
+        bandwidth: "100 Mbps",
+        kondisi: "Baik",
+        dl: 87,
+        ul: 34,
+        tiket: 0,
+        profiling: "Diverifikasi",
+        year: 2026,
+        month: 9,
+        baik: 80,
+        sedang: 15,
+        buruk: 5,
+    },
+    {
+        opd: "Dinas Kesehatan",
+        bandwidth: "100 Mbps",
+        kondisi: "Sedang",
+        dl: 61,
+        ul: 28,
+        tiket: 1,
+        profiling: "Diajukan",
+        year: 2026,
+        month: 9,
+        baik: 65,
+        sedang: 25,
+        buruk: 10,
+    },
+    {
+        opd: "Dinas PUPR",
+        bandwidth: "50 Mbps",
+        kondisi: "Buruk",
+        dl: 12,
+        ul: 5,
+        tiket: 2,
+        profiling: "Diverifikasi",
+        year: 2026,
+        month: 8,
+        baik: 55,
+        sedang: 30,
+        buruk: 15,
+    },
+    {
+        opd: "Dinas Perhubungan",
+        bandwidth: "200 Mbps",
+        kondisi: "Baik",
+        dl: 178,
+        ul: 89,
+        tiket: 0,
+        profiling: "Diverifikasi",
+        year: 2026,
+        month: 7,
+        baik: 90,
+        sedang: 8,
+        buruk: 2,
+    },
+    {
+        opd: "BKD",
+        bandwidth: "50 Mbps",
+        kondisi: "Sedang",
+        dl: 38,
+        ul: 19,
+        tiket: 1,
+        profiling: "Diajukan",
+        year: 2026,
+        month: 9,
+        baik: 70,
+        sedang: 20,
+        buruk: 10,
+    },
 ];
 
 const opdList = [
@@ -545,6 +618,7 @@ const PageHeader = ({
 const Btn = ({
     children,
     variant = "primary",
+    type = "button",
     onClick,
     disabled,
     small,
@@ -553,6 +627,7 @@ const Btn = ({
 }: {
     children: React.ReactNode;
     variant?: "primary" | "secondary" | "ghost" | "danger" | "success";
+    type?: "button" | "submit";
     onClick?: () => void;
     disabled?: boolean;
     small?: boolean;
@@ -574,6 +649,7 @@ const Btn = ({
     };
     return (
         <button
+            type={type}
             className={`${base} ${v[variant]} ${className}`}
             onClick={onClick}
             disabled={disabled}
@@ -1377,7 +1453,7 @@ function CommandPalette({ onNav }: { onNav: (screen: Screen) => void }) {
         <>
             <button
                 onClick={() => setOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-500 shadow-sm hover:border-blue-300 hover:text-blue-700"
+                className="inline-flex h-[42px] w-[180px] shrink-0 self-end items-center justify-between gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-500 shadow-sm hover:border-blue-300 hover:text-blue-700"
             >
                 <Command size={15} />
                 Cari cepat
@@ -1678,6 +1754,123 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
 
 // ─── Dashboard Admin ──────────────────────────────────────────────────────────
 function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
+    const monthAbbreviations = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "Mei",
+        "Jun",
+        "Jul",
+        "Ags",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Des",
+    ];
+    const normalizeOpd = (name: string) =>
+        name === "Badan Kepegawaian Daerah"
+            ? "BKD"
+            : name === "Dinas Pendidikan dan Kebudayaan"
+              ? "Dinas Pendidikan"
+              : name;
+    const getPeriod = (date: string) => {
+        const [yearValue, monthValue] = date.split("-").map(Number);
+        return `${monthAbbreviations[monthValue - 1]} ${yearValue}`;
+    };
+    const periodOrder = (value: string) => {
+        const [month, yearValue] = value.split(" ");
+        return Number(yearValue) * 12 + monthAbbreviations.indexOf(month);
+    };
+    const [opdFilter, setOpdFilter] = useState("Semua OPD");
+    const [periodFilter, setPeriodFilter] = useState("Semua Periode");
+    const [resolvedProfilings] = useState<Record<number, string>>(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.adminResolvedProfilings") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
+    const opdOptions = Array.from(
+        new Set([
+            ...reportRows.map((row) => row.opd),
+            ...ticketList.map((ticket) => normalizeOpd(ticket.opd)),
+            ...profilingQueue.map((profiling) =>
+                normalizeOpd(profiling.opd),
+            ),
+        ]),
+    ).sort();
+    const periodOptions = [
+        "Semua Periode",
+        ...Array.from(
+            new Set([
+                ...reportRows.map(
+                    (row) =>
+                        `${monthAbbreviations[row.month - 1]} ${row.year}`,
+                ),
+                ...ticketList.map((ticket) => getPeriod(ticket.tanggal)),
+                ...profilingQueue.map((profiling) =>
+                    getPeriod(profiling.diajukan),
+                ),
+            ]),
+        ).sort((left, right) => periodOrder(right) - periodOrder(left)),
+    ];
+    const matchesOpd = (name: string) =>
+        opdFilter === "Semua OPD" || normalizeOpd(name) === opdFilter;
+    const matchesPeriod = (date: string) =>
+        periodFilter === "Semua Periode" || getPeriod(date) === periodFilter;
+    const filteredRows = reportRows.filter(
+        (row) =>
+            matchesOpd(row.opd) &&
+            (periodFilter === "Semua Periode" ||
+                `${monthAbbreviations[row.month - 1]} ${row.year}` ===
+                    periodFilter),
+    );
+    const filteredTickets = ticketList.filter(
+        (ticket) => matchesOpd(ticket.opd) && matchesPeriod(ticket.tanggal),
+    );
+    const filteredProfilings = profilingQueue.filter(
+        (profiling) =>
+            !resolvedProfilings[profiling.id] &&
+            matchesOpd(profiling.opd) &&
+            matchesPeriod(profiling.diajukan),
+    );
+    const conditionData = kondisiPie.map((condition) => {
+        const key = condition.name.toLowerCase() as "baik" | "sedang" | "buruk";
+        const average = filteredRows.length
+            ? Math.round(
+                  filteredRows.reduce((total, row) => total + row[key], 0) /
+                      filteredRows.length,
+              )
+            : 0;
+        return { ...condition, value: average };
+    });
+    const ticketTrendData = periodOptions
+        .slice(1)
+        .reverse()
+        .map((period) => {
+            const ticketsInPeriod = filteredTickets.filter(
+                (ticket) => getPeriod(ticket.tanggal) === period,
+            );
+            return {
+                bulan: period,
+                baru: ticketsInPeriod.filter((ticket) => ticket.status === "Baru")
+                    .length,
+                proses: ticketsInPeriod.filter((ticket) =>
+                    ["Proses", "Diteruskan"].includes(ticket.status),
+                ).length,
+                selesai: ticketsInPeriod.filter(
+                    (ticket) => ticket.status === "Selesai",
+                ).length,
+            };
+        })
+        .filter(
+            (row) =>
+                periodFilter === "Semua Periode" || row.bulan === periodFilter,
+        );
+
     return (
         <div className="space-y-6">
             <PageHeader
@@ -1687,14 +1880,16 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                     <>
                         <CommandPalette onNav={onNav} />
                         <FSelect
-                            options={[
-                                "Semua OPD",
-                                "Dinas Pendidikan",
-                                "Dinas Kesehatan",
-                            ]}
+                            label="OPD"
+                            options={["Semua OPD", ...opdOptions]}
+                            value={opdFilter}
+                            onChange={setOpdFilter}
                         />
                         <FSelect
-                            options={["Sep 2026", "Ags 2026", "Jul 2026"]}
+                            label="Bulan / Tahun"
+                            options={periodOptions}
+                            value={periodFilter}
+                            onChange={setPeriodFilter}
                         />
                     </>
                 }
@@ -1703,43 +1898,42 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
                 <StatCard
                     label="Total OPD"
-                    value={32}
+                    value={new Set(filteredRows.map((row) => row.opd)).size}
                     icon={<Building2 size={20} />}
                     color="blue"
                 />
                 <StatCard
                     label="Profiling Diajukan"
-                    value={8}
+                    value={filteredRows.filter((row) => row.profiling === "Diajukan").length}
                     icon={<ClipboardList size={20} />}
                     color="amber"
                     sub="Menunggu tinjau"
                 />
                 <StatCard
                     label="Profiling Diverifikasi"
-                    value={24}
+                    value={filteredRows.filter((row) => row.profiling === "Diverifikasi").length}
                     icon={<CheckCircle2 size={20} />}
                     color="green"
                     sub="Bulan ini"
                 />
                 <StatCard
                     label="Tiket Baru"
-                    value={11}
+                    value={filteredTickets.filter((ticket) => ticket.status === "Baru").length}
                     icon={<XCircle size={20} />}
                     color="red"
                     sub="Perlu tindakan"
                 />
                 <StatCard
                     label="Tiket Proses"
-                    value={9}
+                    value={filteredTickets.filter((ticket) => ["Proses", "Diteruskan"].includes(ticket.status)).length}
                     icon={<AlertTriangle size={20} />}
                     color="amber"
                 />
                 <StatCard
                     label="Tiket Selesai"
-                    value={14}
+                    value={filteredTickets.filter((ticket) => ticket.status === "Selesai").length}
                     icon={<CheckCircle2 size={20} />}
                     color="green"
-                    trend="↑ +4 vs bulan lalu"
                 />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1748,7 +1942,7 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                         Kondisi Jaringan per OPD (%)
                     </h3>
                     <ResponsiveContainer width="100%" height={210}>
-                        <BarChart data={networkData} barSize={16}>
+                        <BarChart data={filteredRows} barSize={16}>
                             <CartesianGrid
                                 strokeDasharray="3 3"
                                 stroke="#f1f5f9"
@@ -1793,7 +1987,7 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                     <ResponsiveContainer width="100%" height={170}>
                         <PieChart>
                             <Pie
-                                data={kondisiPie}
+                                data={conditionData}
                                 cx="50%"
                                 cy="50%"
                                 innerRadius={45}
@@ -1808,7 +2002,7 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                         </PieChart>
                     </ResponsiveContainer>
                     <div className="flex flex-col gap-1.5 mt-2">
-                        {kondisiPie.map((d) => (
+                        {conditionData.map((d) => (
                             <div
                                 key={d.name}
                                 className="flex items-center justify-between text-xs"
@@ -1835,7 +2029,7 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                     Tren Tiket 6 Bulan Terakhir
                 </h3>
                 <ResponsiveContainer width="100%" height={190}>
-                    <LineChart data={ticketTrend}>
+                    <LineChart data={ticketTrendData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                         <XAxis
                             dataKey="bulan"
@@ -1896,7 +2090,7 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                             Lihat semua →
                         </Btn>
                     </div>
-                    {profilingQueue.map((p) => (
+                    {filteredProfilings.map((p) => (
                         <div
                             key={p.id}
                             className="flex items-center gap-3 py-3 border-b border-slate-100 last:border-0"
@@ -1939,7 +2133,7 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                             Lihat semua →
                         </Btn>
                     </div>
-                    {ticketList
+                    {filteredTickets
                         .filter((t) => t.status === "Baru")
                         .map((t) => (
                             <div
@@ -2275,7 +2469,21 @@ function MasterUser() {
         relasi: string;
         status: string;
     };
-    const [data, setData] = useState<UserRow[]>(userList);
+    const [data, setData] = useState<UserRow[]>(() => {
+        try {
+            const storedUsers = localStorage.getItem("siprojar.adminUsers");
+            if (!storedUsers) return userList;
+            const parsedUsers: unknown = JSON.parse(storedUsers);
+            return Array.isArray(parsedUsers)
+                ? (parsedUsers as UserRow[])
+                : userList;
+        } catch {
+            return userList;
+        }
+    });
+    useEffect(() => {
+        localStorage.setItem("siprojar.adminUsers", JSON.stringify(data));
+    }, [data]);
     const [search, setSearch] = useState("");
     const [roleFilter, setRoleFilter] = useState("Semua Role");
     const [statusFilter, setStatusFilter] = useState("Semua Status");
@@ -2688,7 +2896,7 @@ function MasterUser() {
 }
 
 // ─── Form Profiling ───────────────────────────────────────────────────────────
-function FormProfiling() {
+function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
     const [step, setStep] = useState(0);
     const [done, setDone] = useState(false);
     const [apps, setApps] = useState(["SIMDA", "SIPD"]);
@@ -2711,8 +2919,8 @@ function FormProfiling() {
     if (done)
         return (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-4xl mb-5">
-                    ✅
+                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-5">
+                    <CheckCircle2 size={36} />
                 </div>
                 <h2 className="text-2xl font-extrabold text-slate-800 mb-3">
                     Profiling Berhasil Diajukan!
@@ -2730,7 +2938,12 @@ function FormProfiling() {
                     >
                         Isi Profiling Baru
                     </Btn>
-                    <Btn variant="secondary">📂 Riwayat Profiling</Btn>
+                    <Btn
+                        variant="secondary"
+                        onClick={() => onNav("riwayat-profiling")}
+                    >
+                        <FolderClock size={16} /> Riwayat Profiling
+                    </Btn>
                 </div>
             </div>
         );
@@ -3106,7 +3319,7 @@ function FormProfiling() {
                         </Btn>
                     ) : (
                         <Btn onClick={() => setDone(true)}>
-                            🚀 Ajukan Profiling
+                            <FilePenLine size={16} /> Ajukan Profiling
                         </Btn>
                     )}
                 </div>
@@ -3116,10 +3329,27 @@ function FormProfiling() {
 }
 
 // ─── Riwayat Profiling ────────────────────────────────────────────────────────
-function RiwayatProfiling() {
+function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
     const [sel, setSel] = useState<(typeof riwayatProfiling)[0] | null>(null);
     return (
         <div>
+            <style>{`
+                .profiling-print-report { display: none; }
+                @media print {
+                    body * { visibility: hidden !important; }
+                    .profiling-print-report,
+                    .profiling-print-report * { visibility: visible !important; }
+                    .profiling-print-report {
+                        display: block !important;
+                        position: fixed;
+                        inset: 0;
+                        padding: 32px;
+                        background: white;
+                        color: #111827;
+                        font: 14px Arial, sans-serif;
+                    }
+                }
+            `}</style>
             <PageHeader
                 title="Riwayat Profiling"
                 sub="Arsip profiling jaringan OPD beserta status dan catatan verifikasi Admin"
@@ -3278,17 +3508,30 @@ function RiwayatProfiling() {
                             </div>
 
                             <div className="flex gap-2 pt-2">
-                                <Btn variant="secondary" small>
-                                    📄 Unduh PDF
+                                <Btn
+                                    variant="secondary"
+                                    small
+                                    onClick={() => window.print()}
+                                >
+                                    <FileDown size={15} /> Unduh PDF
                                 </Btn>
                                 {sel.status === "Ditolak" && (
-                                    <Btn small>📝 Isi Ulang</Btn>
+                                    <Btn
+                                        small
+                                        onClick={() => onNav("form-profiling")}
+                                    >
+                                        <FilePenLine size={15} /> Isi Ulang
+                                    </Btn>
                                 )}
                             </div>
                         </Card>
                     ) : (
                         <Card className="p-12 flex flex-col items-center justify-center text-center h-64">
-                            <div className="text-4xl mb-3">📂</div>
+                            <FolderClock
+                                size={32}
+                                className="mb-3 text-slate-400"
+                                aria-hidden="true"
+                            />
                             <p className="font-semibold text-slate-600">
                                 Pilih periode profiling
                             </p>
@@ -3300,6 +3543,35 @@ function RiwayatProfiling() {
                     )}
                 </div>
             </div>
+            {sel && (
+                <section className="profiling-print-report">
+                    <h1 style={{ fontSize: 24, fontWeight: 700 }}>
+                        Riwayat Profiling Jaringan
+                    </h1>
+                    <h2 style={{ marginTop: 20, fontSize: 18 }}>
+                        Periode {sel.periode}
+                    </h2>
+                    <p style={{ marginTop: 8 }}>
+                        Status: {sel.status}
+                        {sel.kondisi !== "-" ? ` · Kondisi: ${sel.kondisi}` : ""}
+                    </p>
+                    <p style={{ marginTop: 8 }}>
+                        Diverifikasi oleh {sel.verifikator} pada {sel.tglVerifikasi}
+                    </p>
+                    <hr style={{ margin: "20px 0" }} />
+                    <p>Bandwidth: {sel.bandwidth}</p>
+                    <p>Jumlah device: {sel.device}</p>
+                    <p>ISP: {sel.isp}</p>
+                    <p>Aplikasi: {sel.apps.join(", ")}</p>
+                    <p>Kendala: {sel.kendala}</p>
+                    {sel.status !== "Ditolak" && (
+                        <p>
+                            Speed test: Download {sel.dl} Mbps · Upload {sel.ul} Mbps · Ping {sel.ping} ms
+                        </p>
+                    )}
+                    <p style={{ marginTop: 16 }}>Catatan verifikasi: {sel.catatan}</p>
+                </section>
+            )}
         </div>
     );
 }
@@ -3307,6 +3579,17 @@ function RiwayatProfiling() {
 // ─── Verifikasi Profiling ─────────────────────────────────────────────────────
 function VerifikasiProfiling() {
     const [sel, setSel] = useState<(typeof profilingQueue)[0] | null>(null);
+    const [resolvedProfilings, setResolvedProfilings] = useState<
+        Record<number, "approved" | "rejected">
+    >(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.adminResolvedProfilings") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
     const [statusFilter, setStatusFilter] = useState("Semua Status");
     const [monthFilter, setMonthFilter] = useState("Semua Bulan");
     const [kesimpulan, setKesimpulan] = useState("");
@@ -3322,6 +3605,18 @@ function VerifikasiProfiling() {
     const pct = sel ? Math.round((sel.dl / parseInt(sel.bandwidth)) * 100) : 0;
     const wajar = pct >= 60;
     const canSubmit = kesimpulan.trim().length >= 10 && kewajaranOk !== null;
+    const resolveProfiling = (decision: "approved" | "rejected") => {
+        if (!sel) return;
+        const nextResolved = { ...resolvedProfilings, [sel.id]: decision };
+        localStorage.setItem(
+            "siprojar.adminResolvedProfilings",
+            JSON.stringify(nextResolved),
+        );
+        setResolvedProfilings(nextResolved);
+        setDecisionModal(null);
+        setDone(decision);
+        setSel(null);
+    };
     const filteredProfilings = profilingQueue.filter((profiling) => {
         const month = Number(profiling.diajukan.slice(5, 7));
         const matchesStatus =
@@ -3334,7 +3629,9 @@ function VerifikasiProfiling() {
         const matchesMonth =
             monthFilter === "Semua Bulan" ||
             month === monthNumberByLabel[monthFilter];
-        return matchesStatus && matchesMonth;
+        return (
+            !resolvedProfilings[profiling.id] && matchesStatus && matchesMonth
+        );
     });
 
     return (
@@ -3688,11 +3985,7 @@ function VerifikasiProfiling() {
                     <div className="px-6 pb-6 flex gap-3">
                         <Btn
                             variant="success"
-                            onClick={() => {
-                                setDecisionModal(null);
-                                setDone("approved");
-                                setSel(null);
-                            }}
+                            onClick={() => resolveProfiling("approved")}
                         >
                             Konfirmasi Setujui
                         </Btn>
@@ -3728,11 +4021,7 @@ function VerifikasiProfiling() {
                         <Btn
                             variant="danger"
                             disabled={!catatanTolak.trim()}
-                            onClick={() => {
-                                setDecisionModal(null);
-                                setDone("rejected");
-                                setSel(null);
-                            }}
+                            onClick={() => resolveProfiling("rejected")}
                         >
                             Kirim Penolakan
                         </Btn>
@@ -3919,8 +4208,9 @@ function KelolaTicket() {
                             {sel.status === "Baru" && !actionDone && (
                                 <div className="border border-slate-200 rounded-2xl p-4 space-y-4">
                                     <div>
-                                        <p className="font-bold text-slate-700 text-sm mb-1">
-                                            🎯 Tentukan Tindak Lanjut
+                                        <p className="flex items-center gap-2 font-bold text-slate-700 text-sm mb-1">
+                                            <ClipboardCheck size={16} />
+                                            Tentukan Tindak Lanjut
                                         </p>
                                         <p className="text-xs text-slate-400">
                                             Pilih cara penanganan tiket.
@@ -3941,8 +4231,8 @@ function KelolaTicket() {
                                                     : "border-slate-200 hover:border-blue-300",
                                             )}
                                         >
-                                            <div className="text-2xl mb-2">
-                                                🏠
+                                            <div className="mb-2 text-blue-700">
+                                                <Building2 size={24} />
                                             </div>
                                             <p className="font-semibold text-sm text-slate-800">
                                                 Tangani Internal
@@ -3963,8 +4253,8 @@ function KelolaTicket() {
                                                     : "border-slate-200 hover:border-purple-300",
                                             )}
                                         >
-                                            <div className="text-2xl mb-2">
-                                                ↗
+                                            <div className="mb-2 text-purple-700">
+                                                <ArrowRight size={24} />
                                             </div>
                                             <p className="font-semibold text-sm text-slate-800">
                                                 Teruskan ke Vendor
@@ -3995,8 +4285,8 @@ function KelolaTicket() {
                                                 }
                                             >
                                                 {action === "internal"
-                                                    ? "✅ Tangani Internal"
-                                                    : `↗ Teruskan ke ${vendor}`}
+                                                    ? <><Building2 size={16} /> Tangani Internal</>
+                                                    : <><ArrowRight size={16} /> Teruskan ke {vendor}</>}
                                             </Btn>
                                             <Btn
                                                 variant="ghost"
@@ -4017,8 +4307,8 @@ function KelolaTicket() {
                             {actionDone && (
                                 <InfoBox type="success">
                                     {action === "internal"
-                                        ? "✅ Tiket ditangani secara internal oleh tim Diskominfo."
-                                        : `↗ Tiket diteruskan ke ${vendor}. Menunggu konfirmasi vendor.`}
+                                        ? <><Building2 size={16} className="mr-1 inline" /> Tiket ditangani secara internal oleh tim Diskominfo.</>
+                                        : <><ArrowRight size={16} className="mr-1 inline" /> Tiket diteruskan ke {vendor}. Menunggu konfirmasi vendor.</>}
                                 </InfoBox>
                             )}
                             {sel.vendor && sel.status !== "Baru" && (
@@ -4325,78 +4615,6 @@ function Laporan() {
     const [year, setYear] = useState("2026");
     const [period, setPeriod] = useState("Semua Bulan");
     const [opd, setOpd] = useState("Semua OPD");
-    const reportRows = [
-        {
-            opd: "Dinas Pendidikan",
-            bandwidth: "100 Mbps",
-            kondisi: "Baik",
-            dl: 87,
-            ul: 34,
-            tiket: 0,
-            profiling: "Diverifikasi",
-            year: 2026,
-            month: 9,
-            baik: 80,
-            sedang: 15,
-            buruk: 5,
-        },
-        {
-            opd: "Dinas Kesehatan",
-            bandwidth: "100 Mbps",
-            kondisi: "Sedang",
-            dl: 61,
-            ul: 28,
-            tiket: 1,
-            profiling: "Diajukan",
-            year: 2026,
-            month: 9,
-            baik: 65,
-            sedang: 25,
-            buruk: 10,
-        },
-        {
-            opd: "Dinas PUPR",
-            bandwidth: "50 Mbps",
-            kondisi: "Buruk",
-            dl: 12,
-            ul: 5,
-            tiket: 2,
-            profiling: "Diverifikasi",
-            year: 2026,
-            month: 8,
-            baik: 55,
-            sedang: 30,
-            buruk: 15,
-        },
-        {
-            opd: "Dinas Perhubungan",
-            bandwidth: "200 Mbps",
-            kondisi: "Baik",
-            dl: 178,
-            ul: 89,
-            tiket: 0,
-            profiling: "Diverifikasi",
-            year: 2026,
-            month: 7,
-            baik: 90,
-            sedang: 8,
-            buruk: 2,
-        },
-        {
-            opd: "BKD",
-            bandwidth: "50 Mbps",
-            kondisi: "Sedang",
-            dl: 38,
-            ul: 19,
-            tiket: 1,
-            profiling: "Diajukan",
-            year: 2026,
-            month: 9,
-            baik: 70,
-            sedang: 20,
-            buruk: 10,
-        },
-    ];
     const months = [
         "Januari",
         "Februari",
@@ -4867,7 +5085,7 @@ function DashboardOPD({ onNav }: { onNav: (s: Screen) => void }) {
                 >
                     <Ticket size={16} /> Ajukan Tiket
                 </Btn>
-                <Btn variant="ghost" onClick={() => onNav("pantau-tiket")}>
+                <Btn variant="secondary" onClick={() => onNav("pantau-tiket")}>
                     <SearchCheck size={16} /> Pantau Tiket
                 </Btn>
             </div>
@@ -5090,7 +5308,7 @@ function TiketPengaduan() {
                                     disabled={!desc.trim()}
                                     onClick={() => setDone(true)}
                                 >
-                                    🚀 Ajukan Tiket
+                                    <Ticket size={16} /> Ajukan Tiket
                                 </Btn>
                                 <Btn
                                     variant="secondary"
@@ -5220,7 +5438,11 @@ function PantauTiket() {
                         </Card>
                     ) : (
                         <Card className="p-12 flex flex-col items-center justify-center text-center h-64">
-                            <div className="text-4xl mb-3">🔍</div>
+                            <SearchCheck
+                                size={32}
+                                className="mb-3 text-slate-400"
+                                aria-hidden="true"
+                            />
                             <p className="font-semibold text-slate-600">
                                 Pilih tiket untuk melihat detail
                             </p>
@@ -5238,7 +5460,45 @@ function PantauTiket() {
 
 // ─── Dashboard Vendor ─────────────────────────────────────────────────────────
 function DashboardVendor({ onNav }: { onNav: (s: Screen) => void }) {
-    const mine = ticketList.filter((t) => t.vendor === "CV Jaringan Sejahtera");
+    const [ticketStatuses] = useState<Record<string, string>>(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.vendorTicketStatuses") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
+    const [accepted] = useState<Record<string, boolean>>(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.vendorAccepted") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
+    const [rejected] = useState<Record<string, boolean>>(() => {
+        try {
+            return JSON.parse(
+                localStorage.getItem("siprojar.vendorRejected") ?? "{}",
+            );
+        } catch {
+            return {};
+        }
+    });
+    const mine = ticketList
+        .filter((ticket) => ticket.vendor === "CV Jaringan Sejahtera")
+        .map((ticket) => ({
+            ...ticket,
+            status:
+                ticketStatuses[ticket.id] ??
+                (rejected[ticket.id]
+                    ? "Ditolak"
+                    : accepted[ticket.id] && ticket.status === "Diteruskan"
+                      ? "Proses"
+                      : ticket.status),
+        }));
     return (
         <div className="space-y-6">
             <PageHeader
@@ -5249,7 +5509,7 @@ function DashboardVendor({ onNav }: { onNav: (s: Screen) => void }) {
                 <StatCard
                     label="Total Ditugaskan"
                     value={mine.length}
-                    icon="📥"
+                    icon={<ClipboardList size={20} />}
                     color="blue"
                 />
                 <StatCard
@@ -5260,7 +5520,7 @@ function DashboardVendor({ onNav }: { onNav: (s: Screen) => void }) {
                 />
                 <StatCard
                     label="Selesai Bulan Ini"
-                    value={7}
+                    value={mine.filter((t) => t.status === "Selesai").length}
                     icon={<CheckCircle2 size={20} />}
                     color="green"
                 />
@@ -5312,12 +5572,14 @@ function DashboardVendor({ onNav }: { onNav: (s: Screen) => void }) {
                 ))}
             </Card>
             <div className="flex gap-3 flex-wrap">
-                <Btn onClick={() => onNav("tiket-masuk")}>📥 Tiket Masuk</Btn>
+                <Btn onClick={() => onNav("tiket-masuk")}>
+                    <Ticket size={16} /> Tiket Masuk
+                </Btn>
                 <Btn
                     variant="secondary"
                     onClick={() => onNav("update-penanganan")}
                 >
-                    📤 Update Penanganan
+                    <Upload size={16} /> Update Penanganan
                 </Btn>
             </div>
         </div>
@@ -5630,7 +5892,11 @@ function TiketMasuk() {
                         </Card>
                     ) : (
                         <Card className="p-12 flex flex-col items-center justify-center text-center h-64">
-                            <div className="text-4xl mb-3">📥</div>
+                            <SearchCheck
+                                size={32}
+                                className="mb-3 text-slate-400"
+                                aria-hidden="true"
+                            />
                             <p className="font-semibold text-slate-600">
                                 Pilih tiket untuk ditinjau
                             </p>
@@ -5680,31 +5946,25 @@ function UpdatePenanganan() {
             accepted[ticket.id] && currentStatus === "Diteruskan";
         return (
             ticket.vendor === "CV Jaringan Sejahtera" &&
-            (currentStatus === "Proses" || wasAccepted) &&
-            currentStatus !== "Menunggu Verifikasi" &&
-            currentStatus !== "Selesai"
+            (currentStatus === "Proses" || wasAccepted)
         );
     });
-    const t = ticketList.find((x) => x.id === selTicket);
+    const t = mine.find((ticket) => ticket.id === selTicket);
+    const submitUpdate = () => {
+        if (!note.trim() || (status === "Selesai" && !evidenceFile)) return;
 
-    if (done)
-        return (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-4xl mb-5">
-                    📤
-                </div>
-                <h2 className="text-2xl font-extrabold text-slate-800 mb-2">
-                    Update Berhasil Dikirim!
-                </h2>
-                <p className="text-slate-400 max-w-sm">
-                    Catatan dan status penanganan telah diperbarui. Admin
-                    Diskominfo mendapat notifikasi.
-                </p>
-                <Btn className="mt-8" onClick={() => setDone(false)}>
-                    Kembali
-                </Btn>
-            </div>
+        const nextStatuses = {
+            ...ticketStatuses,
+            [selTicket]:
+                status === "Selesai" ? "Menunggu Verifikasi" : "Proses",
+        };
+        localStorage.setItem(
+            "siprojar.vendorTicketStatuses",
+            JSON.stringify(nextStatuses),
         );
+        setTicketStatuses(nextStatuses);
+        setDone(true);
+    };
 
     return (
         <div>
@@ -5712,6 +5972,23 @@ function UpdatePenanganan() {
                 title="Update Penanganan Tiket"
                 sub="Perbarui perkembangan dan unggah bukti penyelesaian tiket"
             />
+            {done && (
+                <div
+                    role="status"
+                    className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800"
+                >
+                    <CheckCircle2 size={20} className="mt-0.5 shrink-0" />
+                    <div>
+                        <p className="font-semibold">
+                            Update Berhasil Dikirim
+                        </p>
+                        <p className="mt-1 text-sm text-emerald-700">
+                            Catatan dan status penanganan telah diperbarui.
+                            Admin Diskominfo mendapat notifikasi.
+                        </p>
+                    </div>
+                </div>
+            )}
             <div className="max-w-2xl space-y-5">
                 <Card className="p-5">
                     <p className="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">
@@ -5733,7 +6010,14 @@ function UpdatePenanganan() {
                                     name="ticket"
                                     value={t.id}
                                     checked={selTicket === t.id}
-                                    onChange={() => setSelTicket(t.id)}
+                                    onChange={() => {
+                                        setSelTicket(t.id);
+                                        setDone(false);
+                                        setStatus("Proses");
+                                        setNote("");
+                                        setEvidenceFile(null);
+                                        setFileError("");
+                                    }}
                                     className="accent-blue-600"
                                 />
                                 <div className="flex-1 min-w-0">
@@ -5753,7 +6037,8 @@ function UpdatePenanganan() {
                     </div>
                 </Card>
 
-                {t && (
+                {t && !done && (
+                    <div>
                     <Card className="p-5 sm:p-7 space-y-5">
                         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                             <p className="text-xs text-blue-400 font-semibold mb-1">
@@ -5864,25 +6149,12 @@ function UpdatePenanganan() {
 
                         <div className="flex gap-3 pt-2">
                             <Btn
+                                type="button"
                                 disabled={
                                     !note.trim() ||
                                     (status === "Selesai" && !evidenceFile)
                                 }
-                                onClick={() => {
-                                    const nextStatuses = {
-                                        ...ticketStatuses,
-                                        [selTicket]:
-                                            status === "Selesai"
-                                                ? "Menunggu Verifikasi"
-                                                : "Proses",
-                                    };
-                                    localStorage.setItem(
-                                        "siprojar.vendorTicketStatuses",
-                                        JSON.stringify(nextStatuses),
-                                    );
-                                    setTicketStatuses(nextStatuses);
-                                    setDone(true);
-                                }}
+                                onClick={submitUpdate}
                             >
                                 <Upload size={15} /> Kirim Update
                             </Btn>
@@ -5891,6 +6163,7 @@ function UpdatePenanganan() {
                             </Btn>
                         </div>
                     </Card>
+                    </div>
                 )}
             </div>
         </div>
@@ -6072,7 +6345,11 @@ function VerifikasiPenanganan() {
                 ))}
                 {done.length === 0 && (
                     <Card className="p-12 text-center">
-                        <div className="text-4xl mb-3">🔍</div>
+                        <SearchCheck
+                            size={32}
+                            className="mx-auto mb-3 text-slate-400"
+                            aria-hidden="true"
+                        />
                         <p className="text-slate-400">
                             Tidak ada tiket berstatus Selesai yang perlu
                             diverifikasi.
@@ -6169,9 +6446,9 @@ export default function App() {
             case "master-user":
                 return <MasterUser />;
             case "form-profiling":
-                return <FormProfiling />;
+                return <FormProfiling onNav={setScreen} />;
             case "riwayat-profiling":
-                return <RiwayatProfiling />;
+                return <RiwayatProfiling onNav={setScreen} />;
             case "verifikasi-profiling":
                 return <VerifikasiProfiling />;
             case "kelola-tiket":
