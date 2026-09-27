@@ -1,0 +1,90 @@
+LAPORAN PROFILLING DISKOMINFO KABUPATEN MALANG;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;
+NO;LOKASI;ALAMAT;JUMLAH INTERNET;BANDWIDTH TOTAL;JUMLAH DEVICE;JUMLAH PEGAWAI;APLIKASI;SPEED TEST;;KENDALA;;;SOLUSI / MASUKAN;;;KESIMPULAN;
+;;;;;;;;SESUAI;TDK SESUAI;BANDWIDTH KURANG;DEVICE;TOPOLOGI;SOSIALISASI;TAMBAHAN BANDWIDTH;PEREMAJAAN PERANGKAT;;
+;;;;;;;;;;;;;;;;;
+1;Bagian Perencanaan dan Keuangan;Jl. Tlk. Pelabuhan Ratu No.378, Arjosari, Kec. Blimbing, Kota Malang, Jawa Timur 65126;Kominfo;;34;17;15;;;;;?;;;;Aman/Tidak Ada Kendala.;
+2;Bagian Protokol dan Komunikasi Pimpinan;Jl. Raya Arjowinangun No.1, Arjowinangun, Kec. Kedungkandang, Kota Malang, Jawa Timur 65132;Kominfo;;10;29;3;;;;?;?;;;?;Koneksi wifi lambat, perlu pembaharuan pada access point.;
+3;Bagian Organisasi;;Kominfo;;36;18;2;;?;?;;?;;?;?;Banyak kabel LAN RJ45  yang tidak berfungsi , kapasitas bandwidth yang kecil,  kecepatan internet kurang maksimal;
+4;Bagian Tata Pemerintahan;;Kominfo;;20;16;14;;;;?;;?;;?;Internet sering mati / trouble. ada sebagian koneksi internet yang tidak bisa;
+5;Bagian Administrasi Pembangunan;;Kominfo;;22;12;2;;;;?;?;;;?;Akses pada aplikasi SIPD RI sering buffering / lambat.;
+6;Badan Keuangan dan Aset Daerah;;Indibiz;200 Mbps;300;158;5;?;;;?;;?;;;"1. Terdapat beberapa device yang kesulitan koneksi dengan AP.
+2. Belum ada jaringan Kominfo yang masuk.
+3. Mempunyai server";
+;;;Astinet;50 Mbps;;;;;;;;;;;;;
+7;Bagian Kerjasama;;Kominfo;;22;13;20;;;;;?;;;?;Akses internet sering kali Lambat.;
+8;Bagian Pengadaan Barang dan Jasa;;Kominfo;;90;40;10;;?;?;?;?;;?;?;Perlu penataan jaringan LAN, Peningkatan keamanan dengan IP Table, dan koneksi sangat lemah;
+;;;Indibiz;50 Mbps;;;;;;;;;;;;;
+9;Bagian Kesejahteraan Rakyat ;;Kominfo;;24;14;10;;;;?;?;;;?;AP kurang stabil karena tidak mencukupi dengan jumlah pegawai.;
+10;Bagian Perekonomian;;Kominfo;;25;11;15;;;;;;;;;Aman/Tidak Ada Kendala.;
+11;Bagian Sumber Daya Alam;;Kominfo;;38;19;0;;;;?;;;;?;Sering kali tiba -tiba internet hilang (kurang stabil).;
+12;Bagian Umum;;Kominfo;;50;170;2;;;;?;?;;;?;"1. Jaringan sering trouble dimungkinkan terlalu banyak client.
+2. Kurangnya titik modem(coverage).";
+13;Badan Perencanaan Pembangunan Daerah ;;Kominfo;;160;80;10;;?;?;?;?;;?;?;Sinyal sering naik turun / kurang stabil;
+14;Badan Pendapatan Daerah ;;Indibiz;150 Mbps;800;400;5;?;;;;;;;;"1. Dari fasilitas internet kominfo sudah mati dan tidak digunakan lagi
+2. Mempunyai Server";
+;;;Astinet;120 Mbps;;;;;;;;;;;;;
+15;Badan Kesatuan Bangsa dan Politik;;Kominfo;;58;29;1;;?;?;?;?;;?;?;Terkadang jaringan terputus dan koneksi lambat.;
+16;Badan Penelitian dan Pengembangan Daerah;;Kominfo;;42;80;10;;;;?;?;;;?;Access Point sering lemot dan kurang stabil.;
+17;Dinas Pengendalian Penduduk dan Keluarga Berencana Kab Malang;;Kominfo;;85;46;70;;;;?;?;;;?;"1.Jaringan sering hilang akses dan sangat lambat.
+2.Pembagian akses tidak merata.";
+18;Dinas Kesehatan;;Indibiz;600 Mbps;321;158;62;?;;;?;;;;?;"1.Fasilitas internet dari Kominfo hanya digunakan untuk mesin / perangkat Fingerprint Absensi.
+2.Sering kali koneksi terputus.
+3.Mempunyai server";
+;;;Astinet;100 Mbps;;;;;;;;;;;;;
+;;;Kominfo;;;;;;;;;;;;;;
+19;Dinas Perindustrian dan Perdagangan;;Indihome;30 Mbps;98;49;56;;?;?;?;;?;?;?;"1. Kuota belum memenuhi kebutuhan dan koneksi lambat.
+2. Mayoritas ASN bekerja dengan internet mandiri / tethering dari HP.";
+;;;Kominfo;;;;;;;;;;;;;;
+20;Dinas Perikanan;;Indibiz;30 Mbps;51;55;18;;?;?;?;;;?;;Jaringan internet sering lambat dan sering putus nyambung.;
+;;;Kominfo;;;;;;;;;;;;;;
+21;Dinas Perpustakaan dan Kearsipan;;Indihome;50 Mbps;61;61;10;?;;;;;?;;?;Fasilitas Kominfo belum ada;
+22;Dinas Pekerjaan Umum Sumber Daya  Air;;Indihome;50 Mbps;150;80;0;?;;;?;;?;;?;Fasilitas Kominfo : Kerusakan pada 2 Router.;
+23;Kecamatan Kepanjen;;Indihome;50 Mbps;20;20;15;?;;;?;?;?;;?;Jaringan Kominfo Trouble (Sementara belum terpakai karena trouble).;
+24;Dinas Ketahanan Pangan;;Indihome;50 Mbps;60;40;10;;?;;?;?;?;;?;"1. Jaringan tidak menjangkau beberapa ruangan.
+2. Belum ada fasilitas dari kominfo.";
+25;Inspektorat Daerah;;Indihome;100 Mbps;180;90;0;?;;?;;?;;;?;"1. Akses internet sering putus dan speed menurun secara tiba tiba.
+2. Tidak ada jaringan dari Kominfo.
+3. Mempunyai Server.";
+26;Dinas Komunikasi dan Informatika;;Metro-E;;100;49;15;;;;;;;;;"1. Aman / Tidak ada kendala.
+2. Mempunyai server.";
+;;;Capoeng;;;;;;;;;;;;;;
+27;Dinas Pariwisata dan  Kebudayaan;;-;-;150;72;0;;?;?;?;?;?;?;?;Internet masih menumpang di BKAD;
+28;Dinas Pemberdayaan Masyarakat dan Desa;;Kominfo;;100;53;0;;;?;;?;;?;?;Koneksi internet sering lambat;
+29;Satuan Polisi Pamong Praja;;CBN;150 Mbps;450;234;20;?;;;;;;;;Koneksi dari Kominfo tidak stabil, sementara di nonaktifkan.;
+;;;Kominfo;;;;;;;;;;;;;;
+30;Dinas Pemuda dan Olahraga ;;Indihome;30 Mbps;50;80;15;?;;;;;?;;;Fasilitas internet dari kominfo belum ada, kalau bisa secepatnya diberi fasilitas.;
+;;;My Republik;300 Mbps;;;;;;;;;;;;;
+;;;Lintas Data Prima;200 Mbps;;;;;;;;;;;;;
+31;Dinas Sosial;;Indihome;50 Mbps;114;57;27;?;;?;;?;;?;?;"1. Fasilitas dari Kominfo belum ada.
+2. Jaringan internet yang terpasang sering lambat  / putus nyambung.";
+32;Dinas Pemberdayaan Perempuan dan Perlindungan Anak (DP3A);;Indihome;30 Mbps;50;28;1;;;;;;?;;;Fasilitas Kominfo belum ada.;
+33;Badan Penanggulangan Bencana Daerah ;;Kominfo;;110;55;10;;;;?;?;;;?;"1. Sering gangguan/lemot dan terputus.
+2. Beberapa gedung terpisah, baru gedung utama yang terfasilitasi jaringan Kominfo,mungkin bisa ditambahkan untuk gedung Pusdalops.
+3. Perlu Evaluasi penyebaran jaringan disetiap ruangan.";
+34;Dinas Pekerjaan Umum Bina Marga;;Indihome;30 Mbps;304;152;31;?;;;;;;;;Aman / Tidak ada kendala.;
+;;;Kominfo;;;;;;;;;;;;;;
+35;Dinas Tenaga Kerja;;Astinet;50 Mbps;102;51;22;;;;?;;;;?;AP perlu di update (fasilitas Kominfo).;
+;;;Indibiz;200 Mbps;;;;;;;;;;;;;
+;;;Kominfo;;;;;;;;;;;;;;
+36;Dinas Penanaman Modal dan Pelayanan Terpadu Satu Pintu (DPMPTSP);;Iconnet;100 Mbps;170;80;4;;?;?;;;;?;;"1. Internet sering tiba tiba putus no internet.
+2. Di jam sibuk internet turun sampai 2 mbps.
+3. Terkadang router restart sendiri.";
+;;;Kominfo;;;;;;;;;;;;;;
+37;Dinas Kependudukan dan Pencatatan Sipil;;Kominfo;200 Mbps;170;170;3;?;;;;;?;;;"1. Internet Kominfo koneksi dengan VPN Dispenduk kurang stabil.
+2. Mempunyai server.";
+;;;Indibiz;200 Mbps;;;;;;;;;;;;;
+;;;Astinet;5 Mbps;;;;;;;;;;;;;
+38;Dinas Peternakan;;Kominfo;;70;60;10;;;;;;;;;Aman / Tidak ada kendala.;
+;;;Indihome;100 Mbps;;;;;;;;;;;;;
+39;Dinas Koperasi dan Usaha Mikro;;Kominfo;;100;66;2;;;;;;;;;Aman / Tidak ada kendala.;
+40;Dinas Perumahan Kawasan Permukiman dan Cipta Karya;;Marva;100 Mbps;200;182;6;;;;;;?;;;Untuk kedepan mungkin pekerja jasa internet bisa melalui kominfo (bukan dari luar).;
+;;;Indihome;100 Mbps;;;;;;;;;;;;;
+;;;Kominfo;;;;;;;;;;;;;;
+41;Dinas Pendidikan;;Iconnet;100 Mbps;190;103;5;;;;;;;;;"1. Aman / Tidak ada kendala.
+2. Mempunyai server";
+;;;Kominfo;;;;;;;;;;;;;;
+42;Dinas Tanaman Pangan, Hortikultura dan Perkebunan;;Indihome;50 Mbps;182;85;10;;?;;?;;;;?;Fasilitas Kominfo kurang memadahi, Sementara Nonaktif;
+;;;Kominfo;;;;;;;;;;;;;;
+43;Dinas Perhubungan;;Astinet;30 Mbps;126;72;4;?;;;;;?;;;Belum ada fasilitas dari Kominfo;
+;;;Indibiz;75 Mbps;;;;;;;;;;;;;

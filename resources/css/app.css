@@ -1,0 +1,192 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-border: var(--border);
+    --color-ring: var(--ring);
+    --radius-DEFAULT: var(--radius);
+    --font-sans: var(--font-body);
+    --font-display: var(--font-heading);
+    --font-mono: var(--font-mono);
+}
+
+:root {
+    --background: #dae8f7;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --primary: #1d4ed8;
+    --primary-foreground: #ffffff;
+    --secondary: #eff6ff;
+    --secondary-foreground: #1e3a8a;
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    --accent: #4f46e5;
+    --accent-foreground: #ffffff;
+    --border: #e2e8f0;
+    --ring: #93c5fd;
+    --radius: 8px;
+    --font-heading: "Plus Jakarta Sans", sans-serif;
+    --font-body: "Inter", sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+body {
+    font-family: var(--font-body);
+    background-color: #d5e1ec;
+    color: var(--foreground);
+}
+
+.card-soft-shadow,
+.bg-white.shadow,
+.bg-white.shadow-sm,
+.bg-white.shadow-md,
+.bg-white.shadow-lg {
+    box-shadow: 6px 8px 18px rgba(12, 18, 32, 0.09);
+}
+
+.card-soft-shadow:hover {
+    box-shadow: 8px 10px 22px rgba(12, 18, 32, 0.12);
+}
+
+.nav-panel-shadow {
+    box-shadow:
+        6px 0 18px rgba(12, 18, 32, 0.08),
+        0 8px 18px rgba(12, 18, 32, 0.06);
+    z-index: 20;
+}
+
+.floating-paths {
+    opacity: 0.5;
+    mask-image: linear-gradient(to bottom, black, transparent 98%);
+}
+
+.login-submit:not(:disabled):hover {
+    border-color: #60a5fa;
+    color: #2563eb;
+    box-shadow: 0 0 20px rgba(37, 99, 235, 0.35);
+}
+
+.login-submit {
+    background-color: #f8fbff;
+    border-color: #dbeafe;
+}
+
+.login-input {
+    border-color: #bfdbfe !important;
+}
+
+.login-input:hover {
+    border-color: #60a5fa !important;
+}
+
+.login-input:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.login-submit:not(:disabled)::before {
+    position: absolute;
+    inset: 0;
+    content: "";
+    pointer-events: none;
+    border-radius: inherit;
+    background: radial-gradient(
+        100px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+        rgba(37, 99, 235, 0.2),
+        transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 200ms ease;
+}
+
+.login-submit:not(:disabled):hover::before {
+    opacity: 1;
+}
+
+.login-submit > * {
+    position: relative;
+    z-index: 1;
+}
+
+.grid-background {
+    background-color: #f8fafc;
+    background-image:
+        linear-gradient(to right, rgba(71, 85, 105, 0.11) 1px, transparent 1px),
+        linear-gradient(
+            to bottom,
+            rgba(71, 85, 105, 0.11) 1px,
+            transparent 1px
+        ),
+        radial-gradient(
+            circle at 50% 45%,
+            rgba(59, 130, 246, 0.11) 0%,
+            rgba(147, 197, 253, 0.05) 38%,
+            transparent 72%
+        );
+    background-size:
+        40px 40px,
+        40px 40px,
+        100% 100%;
+    animation: grid-drift 28s linear infinite;
+}
+
+@keyframes grid-drift {
+    from {
+        background-position:
+            0 0,
+            0 0,
+            0 0;
+    }
+    to {
+        background-position:
+            40px 40px,
+            40px 40px,
+            0 0;
+    }
+}
+
+.min-h-screen.bg-gray-50,
+.min-h-screen.bg-slate-50 {
+    background-color: #f8fafc !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: var(--font-heading);
+}
