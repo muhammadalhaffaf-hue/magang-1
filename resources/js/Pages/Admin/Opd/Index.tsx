@@ -1214,11 +1214,54 @@ function TopBar({ title, onLogout }: { title: string; onLogout: () => void }) {
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
+function createCaptcha() {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    const colors = ["#047857", "#166534", "#065f46", "#0f766e", "#14532d", "#475569"];
+    const backgrounds = ["#ecfdf5", "#f0fdf4", "#eff6ff", "#f0fdfa", "#f8fafc"];
+    const code = Array.from(
+        { length: 5 },
+        () => alphabet[Math.floor(Math.random() * alphabet.length)],
+    ).join("");
+
+    return {
+        code,
+        background: backgrounds[Math.floor(Math.random() * backgrounds.length)],
+        characters: Array.from(code, (character, index) => ({
+            character,
+            x: 14 + index * 27 + Math.floor(Math.random() * 5) - 2,
+            y: 29 + Math.floor(Math.random() * 9) - 4,
+            rotation: Math.floor(Math.random() * 37) - 18,
+            skew: Math.floor(Math.random() * 15) - 7,
+            fontSize: 17 + Math.floor(Math.random() * 5),
+            fontFamily: ["monospace", "serif", "sans-serif"][Math.floor(Math.random() * 3)],
+            color: colors[Math.floor(Math.random() * colors.length)],
+        })),
+        lines: Array.from({ length: 12 }, () => ({
+            x1: Math.floor(Math.random() * 160),
+            y1: Math.floor(Math.random() * 44),
+            x2: Math.floor(Math.random() * 160),
+            y2: Math.floor(Math.random() * 44),
+            stroke: colors[Math.floor(Math.random() * colors.length)],
+            strokeWidth: Math.random() * 1.4 + 0.6,
+            opacity: Math.random() * 0.3 + 0.2,
+        })),
+        dots: Array.from({ length: 32 }, () => ({
+            cx: Math.floor(Math.random() * 160),
+            cy: Math.floor(Math.random() * 44),
+            r: Math.random() * 1.6 + 0.3,
+            fill: colors[Math.floor(Math.random() * colors.length)],
+            opacity: Math.random() * 0.4 + 0.2,
+        })),
+    };
+}
+
 function Login({ onLogin }: { onLogin: (role: Role, name: string) => void }) {
     const [email, setEmail] = useState("");
     const [pw, setPw] = useState("");
     const [err, setErr] = useState("");
     const [loading, setLoading] = useState(false);
+    const [captcha, setCaptcha] = useState(createCaptcha);
+    const [captchaAnswer, setCaptchaAnswer] = useState("");
     const users = [
         {
             email: "admin@diskominfo.go.id",
@@ -1251,6 +1294,13 @@ function Login({ onLogin }: { onLogin: (role: Role, name: string) => void }) {
     ];
     const submit = () => {
         setErr("");
+        if (captchaAnswer.trim() !== captcha.code) {
+            setErr("Jawaban CAPTCHA belum benar. Silakan coba lagi.");
+            setCaptcha(createCaptcha());
+            setCaptchaAnswer("");
+            return;
+        }
+
         setLoading(true);
         setTimeout(() => {
             const u = users.find((u) => u.email === email && u.pw === pw);
@@ -1359,6 +1409,90 @@ function Login({ onLogin }: { onLogin: (role: Role, name: string) => void }) {
                                 className="login-input"
                             />
                         </div>
+                        <div className="mt-5">
+                            <label
+                                htmlFor="captcha-answer"
+                                className="mb-2 block text-sm font-medium text-slate-700"
+                            >
+                                Verifikasi keamanan
+                            </label>
+                            <div className="flex items-center gap-2 sm:gap-3">
+                                <svg
+                                    viewBox="0 0 160 44"
+                                    role="img"
+                                    aria-label="Gambar kode CAPTCHA acak"
+                                    className="h-11 w-28 shrink-0 rounded-lg border border-slate-200 sm:w-32"
+                                >
+                                    <rect
+                                        width="160"
+                                        height="44"
+                                        rx="8"
+                                        fill={captcha.background}
+                                    />
+                                    {captcha.lines.slice(0, 7).map((line, index) => (
+                                        <line
+                                            key={`back-line-${index}`}
+                                            {...line}
+                                            strokeLinecap="round"
+                                        />
+                                    ))}
+                                    {captcha.dots.map((dot, index) => (
+                                        <circle
+                                            key={`dot-${index}`}
+                                            {...dot}
+                                        />
+                                    ))}
+                                    {captcha.characters.map((item, index) => (
+                                        <text
+                                            key={`character-${index}`}
+                                            x={item.x}
+                                            y={item.y}
+                                            transform={`rotate(${item.rotation} ${item.x} 24) skewX(${item.skew})`}
+                                            fill={item.color}
+                                            fontFamily={item.fontFamily}
+                                            fontSize={item.fontSize}
+                                            fontWeight="700"
+                                        >
+                                            {item.character}
+                                        </text>
+                                    ))}
+                                    {captcha.lines.slice(7).map((line, index) => (
+                                        <line
+                                            key={`front-line-${index}`}
+                                            {...line}
+                                            strokeLinecap="round"
+                                        />
+                                    ))}
+                                </svg>
+                                <input
+                                    id="captcha-answer"
+                                    type="text"
+                                    inputMode="text"
+                                    autoCapitalize="off"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    value={captchaAnswer}
+                                    onChange={(event) =>
+                                        setCaptchaAnswer(event.target.value)
+                                    }
+                                    aria-label="Jawaban CAPTCHA"
+                                    placeholder="Ketik kode"
+                                    className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCaptcha(createCaptcha());
+                                        setCaptchaAnswer("");
+                                    }}
+                                    aria-label="Ganti soal CAPTCHA"
+                                    title="Ganti soal CAPTCHA"
+                                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                >
+                                    <RotateCcw size={16} />
+                                </button>
+                            </div>
+                        </div>
                         {err && (
                             <div className="mt-4 flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl p-3.5">
                                 <span className="text-red-500 flex-shrink-0">
@@ -1382,7 +1516,7 @@ function Login({ onLogin }: { onLogin: (role: Role, name: string) => void }) {
                                     `${event.clientY - bounds.top}px`,
                                 );
                             }}
-                            disabled={loading || !email || !pw}
+                            disabled={loading || !email || !pw || !captchaAnswer}
                             className="login-submit group relative mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3.5 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-300 hover:border-blue-400 hover:text-blue-600 hover:shadow-[0_0_20px_rgba(37,99,235,0.35)] focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <span>
