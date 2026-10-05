@@ -38,7 +38,7 @@ class DatabaseSeeder extends Seeder
                 // Ambil Nama OPD di kolom kedua (indeks [1]) atau sesuaikan posisi nama OPD Anda
                 $namaOpd = isset($data[1]) && !empty($data[1]) ? trim($data[1]) : null;
 
-                if ($namaOpd) {
+                if ($namaOpd && mb_strtoupper($namaOpd) !== 'LOKASI') {
                     DB::table('opd')->insert([
                         'nama_opd'   => substr($namaOpd, 0, 150), // Potong maksimal 150 karakter agar aman
                         'alamat'     => isset($data[2]) ? $data[2] : null,

@@ -174,12 +174,175 @@ class Phase4AccessAndValidationTest extends TestCase
                 ->component('Admin/Opd/Index')
                 ->has('opds', 1)
                 ->where('opds.0.nama_opd', 'Dinas Sosial')
+                ->has('users', 1)
+                ->where('users.0.nama', $admin->nama)
                 ->has('profilings', 1)
                 ->where('profilings.0.opd_id', $opd->id)
                 ->where('profilings.0.status_verifikasi', 'diverifikasi')
                 ->where('tickets.0.id', $ticket->id)
                 ->where('tickets.0.status', 'proses')
                 ->where('tickets.0.kendala.profiling.opd.nama_opd', 'Dinas Sosial'));
+    }
+
+    public function test_vendor_dashboard_only_receives_tickets_assigned_to_its_vendor(): void
+    {
+        $opd = Opd::create([
+            'nama_opd' => 'Dinas Pendidikan',
+            'alamat' => 'Jl. Pendidikan',
+            'jumlah_pegawai' => 50,
+        ]);
+        $profiling = DataProfiling::create([
+            'opd_id' => $opd->id,
+            'periode' => '2026-10',
+            'jumlah_device' => 10,
+            'status_verifikasi' => 'diverifikasi',
+        ]);
+        $issue = Kendala::create([
+            'data_profiling_id' => $profiling->id,
+            'jenis_kendala' => 'device',
+            'deskripsi' => 'Switch bermasalah',
+        ]);
+        $vendorOne = PihakKetiga::create(['nama_vendor' => 'Vendor Satu']);
+        $vendorTwo = PihakKetiga::create(['nama_vendor' => 'Vendor Dua']);
+        /** @var User $vendorUser */
+        $vendorUser = User::factory()->create([
+            'role' => 'pihak_ketiga',
+            'pihak_ketiga_id' => $vendorOne->id,
+        ]);
+        $opdUser = User::factory()->create([
+            'role' => 'opd',
+            'opd_id' => $opd->id,
+        ]);
+        $assignedTicket = Tiket::create([
+            'nomor_tiket' => 'TKT-VENDOR-01',
+            'kendala_id' => $issue->id,
+            'pihak_ketiga_id' => $vendorOne->id,
+            'dibuat_oleh' => $opdUser->id,
+            'urgensi' => 'sedang',
+            'status' => 'diteruskan',
+        ]);
+        $otherVendorTicket = Tiket::create([
+            'nomor_tiket' => 'TKT-VENDOR-02',
+            'kendala_id' => Kendala::create([
+                'data_profiling_id' => $profiling->id,
+                'jenis_kendala' => 'topologi',
+                'deskripsi' => 'Konfigurasi perlu ditinjau',
+            ])->id,
+            'pihak_ketiga_id' => $vendorTwo->id,
+            'dibuat_oleh' => $opdUser->id,
+            'urgensi' => 'rendah',
+            'status' => 'diteruskan',
+        ]);
+
+        $this->actingAs($vendorUser)
+            ->get('/vendor/dashboard')
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Admin/Opd/Index')
+                ->where('role', 'vendor')
+                ->where('vendorName', 'Vendor Satu')
+                ->has('tickets', 1)
+                ->where('tickets.0.id', $assignedTicket->id));
+
+        $this->actingAs($vendorUser)
+            ->postJson("/vendor/tiket/{$otherVendorTicket->id}/status", [
+                'status' => 'proses',
+                'catatan' => 'Tidak boleh mengubah tiket milik vendor lain.',
+            ])
+            ->assertForbidden();
+        $this->assertDatabaseHas('tiket', [
+            'id' => $otherVendorTicket->id,
+            'status' => 'diteruskan',
+        ]);
+
+        /** @var User $unlinkedVendor */
+        $unlinkedVendor = User::factory()->create(['role' => 'pihak_ketiga']);
+        $this->actingAs($unlinkedVendor)
+            ->get('/vendor/dashboard')
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Admin/Opd/Index')
+                ->where('role', 'vendor')
+                ->has('tickets', 0));
+        $this->actingAs($unlinkedVendor)
+            ->postJson("/vendor/tiket/{$assignedTicket->id}/status", [
+                'status' => 'proses',
+                'catatan' => 'Akun tanpa relasi vendor tidak dapat mengakses tiket.',
+            ])
+            ->assertForbidden();
+    }
+
+    public function test_admin_can_manage_database_users_and_link_them_to_vendor(): void
+    {
+        /** @var User $admin */
+        $admin = User::factory()->create(['role' => 'admin']);
+        $opd = Opd::create([
+            'nama_opd' => 'Dinas Kesehatan',
+            'alamat' => 'Jl. Kesehatan',
+            'jumlah_pegawai' => 50,
+        ]);
+        $vendor = PihakKetiga::create([
+            'nama_vendor' => 'Vendor Jaringan',
+            'jenis_layanan' => 'isp',
+        ]);
+
+        $response = $this->actingAs($admin)->postJson('/admin/users', [
+            'nama' => 'Petugas Vendor',
+            'email' => 'petugas-vendor@example.test',
+            'password' => 'password123',
+            'role' => 'opd',
+            'opd_id' => $opd->id,
+            'status' => 'aktif',
+        ]);
+        $response->assertCreated()
+            ->assertJsonPath('user.opd_id', $opd->id)
+            ->assertJsonPath('user.opd.nama_opd', 'Dinas Kesehatan');
+        $userId = $response->json('user.id');
+        $this->assertDatabaseHas('users', [
+            'id' => $userId,
+            'role' => 'opd',
+            'opd_id' => $opd->id,
+            'pihak_ketiga_id' => null,
+        ]);
+
+        $this->putJson("/admin/users/{$userId}", [
+            'nama' => 'Petugas Vendor',
+            'email' => 'petugas-vendor@example.test',
+            'password' => null,
+            'role' => 'pihak_ketiga',
+            'pihak_ketiga_id' => $vendor->id,
+            'status' => 'nonaktif',
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.role', 'pihak_ketiga')
+            ->assertJsonPath('user.opd_id', null)
+            ->assertJsonPath('user.pihak_ketiga.nama_vendor', 'Vendor Jaringan')
+            ->assertJsonPath('user.status', 'nonaktif');
+
+        $this->deleteJson("/admin/users/{$userId}")
+            ->assertOk()
+            ->assertJsonPath('message', 'Pengguna berhasil dihapus.');
+        $this->assertDatabaseMissing('users', ['id' => $userId]);
+    }
+
+    public function test_admin_can_add_vendor_from_ticket_management(): void
+    {
+        /** @var User $admin */
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->postJson('/admin/pihak-ketiga', [
+                'nama_vendor' => 'Vendor Baru',
+                'jenis_layanan' => 'perangkat',
+                'kontak_person' => 'Petugas Vendor',
+                'nomor_kontak' => '081234567890',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('vendor.nama_vendor', 'Vendor Baru')
+            ->assertJsonPath('vendor.jenis_layanan', 'perangkat');
+
+        $this->assertDatabaseHas('pihak_ketiga', [
+            'nama_vendor' => 'Vendor Baru',
+            'jenis_layanan' => 'perangkat',
+        ]);
     }
 
     public function test_admin_can_manage_opd_records_from_the_dashboard_client(): void
@@ -331,6 +494,7 @@ class Phase4AccessAndValidationTest extends TestCase
 
     public function test_saving_current_period_draft_updates_existing_profiling_instead_of_duplicating(): void
     {
+        $currentPeriod = now()->format('Y-m');
         $opd = Opd::create([
             'nama_opd' => 'Dinas Pendidikan',
             'alamat' => 'Jl. Pendidikan',
@@ -340,14 +504,14 @@ class Phase4AccessAndValidationTest extends TestCase
         $user = User::factory()->create(['role' => 'opd', 'opd_id' => $opd->id]);
 
         $firstSave = $this->actingAs($user)->postJson('/opd/profiling', [
-            'periode' => '2026-10',
+            'periode' => $currentPeriod,
             'jumlah_device' => 10,
             'aplikasi' => ['SIPD'],
         ])->assertCreated();
         $profilingId = $firstSave->json('profiling.id');
 
         $this->actingAs($user)->postJson('/opd/profiling', [
-            'periode' => '2026-10',
+            'periode' => $currentPeriod,
             'jumlah_device' => 25,
             'aplikasi' => ['SIPROJAR'],
         ])
@@ -363,8 +527,48 @@ class Phase4AccessAndValidationTest extends TestCase
         ]);
     }
 
+    public function test_opd_cannot_create_a_profiling_for_another_month(): void
+    {
+        $currentPeriod = now()->format('Y-m');
+        $futurePeriod = now()->addMonth()->format('Y-m');
+        $opd = Opd::create([
+            'nama_opd' => 'Dinas Pendidikan',
+            'alamat' => 'Jl. Pendidikan',
+            'jumlah_pegawai' => 50,
+        ]);
+        /** @var User $user */
+        $user = User::factory()->create(['role' => 'opd', 'opd_id' => $opd->id]);
+
+        $this->actingAs($user)
+            ->postJson('/opd/profiling', [
+                'periode' => $currentPeriod,
+                'jumlah_device' => 10,
+            ])
+            ->assertCreated();
+
+        $this->actingAs($user)
+            ->postJson('/opd/profiling', [
+                'periode' => $futurePeriod,
+                'jumlah_device' => 20,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'message',
+                'Profiling baru hanya dapat dibuat untuk bulan berjalan. Satu OPD hanya dapat memiliki satu profiling setiap bulan.',
+            );
+
+        $this->assertDatabaseCount('data_profiling', 1);
+        $this->assertDatabaseHas('data_profiling', [
+            'opd_id' => $opd->id,
+            'periode' => $currentPeriod,
+            'status_verifikasi' => 'draft',
+        ]);
+    }
+
     public function test_existing_submitted_profiling_cannot_be_overwritten_by_a_duplicate_period_save(): void
     {
+        $currentPeriod = now()->format('Y-m');
+        $futurePeriod = now()->addMonth()->format('Y-m');
         $opd = Opd::create([
             'nama_opd' => 'Dinas Pendidikan',
             'alamat' => 'Jl. Pendidikan',
@@ -374,7 +578,7 @@ class Phase4AccessAndValidationTest extends TestCase
         $user = User::factory()->create(['role' => 'opd', 'opd_id' => $opd->id]);
 
         $submittedResponse = $this->actingAs($user)->postJson('/opd/profiling', [
-            'periode' => '2026-10',
+            'periode' => $currentPeriod,
             'jumlah_device' => 10,
             'kecepatan_unduh' => 100,
             'ping_ms' => 100,
@@ -384,7 +588,7 @@ class Phase4AccessAndValidationTest extends TestCase
             ->assertJsonPath('profiling.speed_test.ping_ms', '100.00');
 
         $this->actingAs($user)->postJson('/opd/profiling', [
-            'periode' => '2026-10',
+            'periode' => $currentPeriod,
             'jumlah_device' => 25,
         ])
             ->assertUnprocessable()
@@ -396,36 +600,29 @@ class Phase4AccessAndValidationTest extends TestCase
         $this->assertDatabaseCount('data_profiling', 1);
         $this->assertDatabaseHas('data_profiling', [
             'opd_id' => $opd->id,
-            'periode' => '2026-10',
+            'periode' => $currentPeriod,
             'jumlah_device' => 10,
             'status_verifikasi' => 'diajukan',
         ]);
 
-        $draftResponse = $this->actingAs($user)->postJson('/opd/profiling', [
-            'periode' => '2026-11',
+        $this->actingAs($user)->postJson('/opd/profiling', [
+            'periode' => $futurePeriod,
             'jumlah_device' => 25,
             'kecepatan_unduh' => 100,
             'ping_ms' => 50,
             'tanggal_test' => '2026-11-01',
         ])
-            ->assertCreated()
-            ->assertJsonPath('profiling.periode', '2026-11')
-            ->assertJsonPath('profiling.speed_test.ping_ms', '50.00');
+            ->assertUnprocessable();
 
-        $this->assertDatabaseCount('data_profiling', 2);
+        $this->assertDatabaseCount('data_profiling', 1);
         $this->assertDatabaseHas('data_profiling', [
             'opd_id' => $opd->id,
-            'periode' => '2026-10',
+            'periode' => $currentPeriod,
             'status_verifikasi' => 'diajukan',
         ]);
-        $this->assertDatabaseHas('data_profiling', [
+        $this->assertDatabaseMissing('data_profiling', [
             'opd_id' => $opd->id,
-            'periode' => '2026-11',
-            'status_verifikasi' => 'draft',
-        ]);
-        $this->assertDatabaseHas('speed_test', [
-            'data_profiling_id' => $draftResponse->json('profiling.id'),
-            'ping_ms' => 50,
+            'periode' => $futurePeriod,
         ]);
         $this->assertDatabaseHas('speed_test', [
             'data_profiling_id' => $submittedResponse->json('profiling.id'),
@@ -436,7 +633,7 @@ class Phase4AccessAndValidationTest extends TestCase
             ->get('/opd/dashboard')
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Admin/Opd/Index')
-                ->has('profilings', 2));
+                ->has('profilings', 1));
     }
 
     public function test_custom_profiling_issue_is_required_and_persisted_with_its_display_name(): void
@@ -872,16 +1069,40 @@ class Phase4AccessAndValidationTest extends TestCase
         ]);
 
         $this->actingAs($vendorUser)
-            ->from('/tiket/'.$ticket->id)
-            ->post('/vendor/tiket/'.$ticket->id.'/status', [
+            ->postJson('/vendor/tiket/'.$ticket->id.'/status', [
                 'status' => 'proses',
                 'catatan' => 'Tiket diterima vendor dan penanganan dimulai.',
             ])
-            ->assertRedirect('/tiket/'.$ticket->id);
+            ->assertOk()
+            ->assertJsonPath('ticket.status', 'proses');
         $this->assertDatabaseHas('tiket', ['id' => $ticket->id, 'status' => 'proses']);
 
         $this->actingAs($vendorUser)
-            ->from('/tiket/'.$ticket->id)
+            ->postJson('/vendor/tiket/'.$ticket->id.'/status', [
+                'status' => 'menunggu_verifikasi',
+                'catatan' => 'Bukti penyelesaian wajib diunggah.',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('bukti_file');
+
+        /** @var User $admin */
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin)
+            ->postJson('/admin/tiket/'.$ticket->id.'/status', [
+                'status' => 'selesai',
+                'catatan' => 'Tidak boleh selesai tanpa bukti verifikasi.',
+            ])
+            ->assertUnprocessable();
+
+        $this->actingAs($vendorUser)
+            ->post('/vendor/tiket/'.$ticket->id.'/status', [
+                'status' => 'menunggu_verifikasi',
+                'catatan' => 'Format bukti tidak didukung.',
+                'bukti_file' => UploadedFile::fake()->create('bukti.txt', 10, 'text/plain'),
+            ])
+            ->assertSessionHasErrors('bukti_file');
+
+        $this->actingAs($vendorUser)
             ->post('/vendor/tiket/'.$ticket->id.'/status', [
                 'status' => 'menunggu_verifikasi',
                 'catatan' => 'Perangkat diganti dan pengujian selesai.',
@@ -889,8 +1110,9 @@ class Phase4AccessAndValidationTest extends TestCase
                     'bukti.pdf',
                     "%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF",
                 ),
-            ])
-            ->assertRedirect('/tiket/'.$ticket->id);
+            ], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('ticket.status', 'menunggu_verifikasi');
 
         $history = RiwayatTiket::where('tiket_id', $ticket->id)->latest('id')->firstOrFail();
         $this->assertDatabaseHas('tiket', ['id' => $ticket->id, 'status' => 'menunggu_verifikasi']);
@@ -907,13 +1129,16 @@ class Phase4AccessAndValidationTest extends TestCase
         $otherOpdUser = User::factory()->create(['role' => 'opd', 'opd_id' => $otherOpd->id]);
         $this->actingAs($otherOpdUser)->get('/tiket/bukti/'.$history->id)->assertForbidden();
 
-        $this->actingAs($vendorUser)
-            ->from('/tiket/'.$ticket->id)
-            ->post('/vendor/tiket/'.$ticket->id.'/status', [
-                'status' => 'menunggu_verifikasi',
-                'catatan' => 'Format bukti tidak didukung.',
-                'bukti_file' => UploadedFile::fake()->create('bukti.txt', 10, 'text/plain'),
+        $this->actingAs($admin)
+            ->postJson('/admin/tiket/'.$ticket->id.'/status', [
+                'status' => 'selesai',
+                'catatan' => 'Bukti penanganan diverifikasi Admin.',
             ])
-            ->assertSessionHasErrors('bukti_file');
+            ->assertOk()
+            ->assertJsonPath('ticket.status', 'selesai');
+        $this->assertDatabaseHas('tiket', [
+            'id' => $ticket->id,
+            'status' => 'selesai',
+        ]);
     }
 }

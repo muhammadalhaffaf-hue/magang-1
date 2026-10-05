@@ -142,17 +142,62 @@ class TiketController extends Controller
         return back()->with('success', 'Tiket berhasil diproses.');
     }
 
-    public function updateStatus(Request $request, Tiket $tiket): RedirectResponse
+    public function updateStatus(Request $request, Tiket $tiket): RedirectResponse|JsonResponse
     {
-        $data = $request->validate(['status' => ['required', 'in:proses,menunggu_verifikasi,selesai,ditolak'], 'catatan' => ['required', 'string'], 'bukti_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120']]);
-        if (Auth::user()->role === 'pihak_ketiga') abort_unless($tiket->pihak_ketiga_id === Auth::user()->pihak_ketiga_id && in_array($data['status'], ['proses', 'menunggu_verifikasi']), 403);
-        if (Auth::user()->role === 'admin') abort_unless(in_array($data['status'], ['proses', 'selesai', 'ditolak']), 403);
-        abort_unless($tiket->status !== 'selesai', 422);
-        if ($data['status'] === 'menunggu_verifikasi') $request->validate(['bukti_file' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120']]);
-        if ($data['status'] === 'selesai') abort_unless($tiket->riwayat()->whereNotNull('bukti_file')->exists() || $request->hasFile('bukti_file'), 422, 'Bukti penanganan wajib tersedia sebelum tiket diselesaikan.');
-        $path = $request->hasFile('bukti_file') ? $request->file('bukti_file')->store('bukti-tiket', 'local') : null;
-        $tiket->update(['status' => $data['status']]);
-        $this->history($tiket, $data['catatan'], $data['status'], $path);
+        $user = Auth::user();
+        abort_unless(in_array($user->role, ['admin', 'pihak_ketiga'], true), 403);
+
+        if ($user->role === 'pihak_ketiga') {
+            abort_unless(
+                $user->pihak_ketiga_id !== null &&
+                    $tiket->pihak_ketiga_id === $user->pihak_ketiga_id,
+                403,
+            );
+            abort_unless(in_array($tiket->status, ['diteruskan', 'proses'], true), 422);
+        }
+
+        $allowedStatuses = $user->role === 'pihak_ketiga'
+            ? ($tiket->status === 'diteruskan' ? 'proses,ditolak' : 'proses,menunggu_verifikasi')
+            : 'proses,selesai,ditolak';
+        $data = $request->validate([
+            'status' => ['required', 'in:'.$allowedStatuses],
+            'catatan' => ['required', 'string', 'max:10000'],
+            'bukti_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+        ]);
+
+        if ($data['status'] === 'menunggu_verifikasi') {
+            $request->validate([
+                'bukti_file' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+            ]);
+        }
+
+        if ($data['status'] === 'selesai') {
+            abort_unless(
+                $tiket->status === 'menunggu_verifikasi' &&
+                    $tiket->riwayat()->whereNotNull('bukti_file')->exists(),
+                422,
+                'Bukti penanganan vendor wajib diverifikasi sebelum tiket diselesaikan.',
+            );
+        }
+
+        $path = $request->hasFile('bukti_file')
+            ? $request->file('bukti_file')->store('bukti-tiket', 'local')
+            : null;
+        DB::transaction(function () use ($tiket, $data, $path) {
+            $tiket->update(['status' => $data['status']]);
+            $this->history($tiket, $data['catatan'], $data['status'], $path);
+        });
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ticket' => $tiket->fresh()->load([
+                    'kendala.profiling.opd',
+                    'pihakKetiga',
+                    'riwayat.user',
+                ]),
+            ]);
+        }
+
         return back()->with('success', 'Status tiket berhasil diperbarui.');
     }
 

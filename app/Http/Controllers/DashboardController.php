@@ -21,12 +21,19 @@ class DashboardController extends Controller
         if ($role === 'opd') {
             $profilings->where('opd_id', $request->user()->opd_id);
             $tickets->whereHas('kendala.profiling', fn ($query) => $query->where('opd_id', $request->user()->opd_id));
+        } elseif ($role === 'pihak_ketiga') {
+            if ($request->user()->pihak_ketiga_id) {
+                $tickets->where('pihak_ketiga_id', $request->user()->pihak_ketiga_id);
+            } else {
+                $tickets->whereRaw('1 = 0');
+            }
         }
 
         $data = [
             'role' => $role === 'pihak_ketiga' ? 'vendor' : $role,
             'userName' => $request->user()->nama,
             'opdName' => $request->user()->opd?->nama_opd,
+            'vendorName' => $request->user()->pihakKetiga?->nama_vendor,
             'userId' => $request->user()->id,
             'opdId' => $request->user()->opd_id,
             'opds' => $role === 'admin'
@@ -34,6 +41,11 @@ class DashboardController extends Controller
                 : [],
             'vendors' => $role === 'admin'
                 ? PihakKetiga::orderBy('nama_vendor')->get(['id', 'nama_vendor'])
+                : [],
+            'users' => $role === 'admin'
+                ? User::with(['opd:id,nama_opd', 'pihakKetiga:id,nama_vendor'])
+                    ->orderBy('nama')
+                    ->get(['id', 'nama', 'email', 'role', 'opd_id', 'pihak_ketiga_id', 'status'])
                 : [],
             'profilings' => (clone $profilings)
                 ->with(['opd.koneksiInternet', 'aplikasi', 'speedTest', 'kendala.tiket'])

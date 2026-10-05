@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PihakKetiga;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,9 +19,13 @@ class PihakKetigaController extends Controller
     {
         return Inertia::render('Admin/PihakKetiga/Form', ['vendor' => null]);
     }
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
-        PihakKetiga::create($this->validated($request));
+        $vendor = PihakKetiga::create($this->validated($request));
+        if ($request->expectsJson()) {
+            return response()->json(['vendor' => $vendor], 201);
+        }
+
         return redirect()->route('pihak-ketiga.index')->with('success', 'Data pihak ketiga berhasil ditambahkan.');
     }
     public function show(PihakKetiga $pihakKetiga): Response

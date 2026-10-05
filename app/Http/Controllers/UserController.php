@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Opd;
 use App\Models\PihakKetiga;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -22,24 +23,40 @@ class UserController extends Controller
     {
         return Inertia::render('Admin/User/Form', ['user' => null, 'opds' => Opd::orderBy('nama_opd')->get(['id', 'nama_opd']), 'vendors' => PihakKetiga::orderBy('nama_vendor')->get(['id', 'nama_vendor'])]);
     }
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
-        User::create($this->validated($request));
+        $user = User::create($this->validated($request));
+        if ($request->expectsJson()) {
+            return response()->json([
+                'user' => $user->load(['opd:id,nama_opd', 'pihakKetiga:id,nama_vendor']),
+            ], 201);
+        }
+
         return redirect()->route('users.index')->with('success', 'Pengguna berhasil ditambahkan.');
     }
     public function edit(User $user): Response
     {
         return Inertia::render('Admin/User/Form', ['user' => $user, 'opds' => Opd::orderBy('nama_opd')->get(['id', 'nama_opd']), 'vendors' => PihakKetiga::orderBy('nama_vendor')->get(['id', 'nama_vendor'])]);
     }
-    public function update(Request $request, User $user): RedirectResponse
+    public function update(Request $request, User $user): RedirectResponse|JsonResponse
     {
         $user->update($this->validated($request, $user));
+        if ($request->expectsJson()) {
+            return response()->json([
+                'user' => $user->fresh()->load(['opd:id,nama_opd', 'pihakKetiga:id,nama_vendor']),
+            ]);
+        }
+
         return redirect()->route('users.index')->with('success', 'Pengguna berhasil diperbarui.');
     }
-    public function destroy(User $user): RedirectResponse
+    public function destroy(Request $request, User $user): RedirectResponse|JsonResponse
     {
         abort_if(Auth::id() === $user->id, 422, 'Akun yang sedang digunakan tidak dapat dihapus.');
         $user->delete();
+        if ($request->expectsJson()) {
+            return response()->json(['message' => 'Pengguna berhasil dihapus.']);
+        }
+
         return redirect()->route('users.index')->with('success', 'Pengguna berhasil dihapus.');
     }
     private function validated(Request $request, ?User $user = null): array
@@ -53,7 +70,7 @@ class UserController extends Controller
             $data['opd_id'] = null;
             $data['pihak_ketiga_id'] = null;
         }
-        if (blank($data['password'])) {
+        if (blank($data['password'] ?? null)) {
             unset($data['password']);
         } else {
             $data['password'] = Hash::make($data['password']);

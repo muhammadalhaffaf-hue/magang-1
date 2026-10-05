@@ -61,6 +61,11 @@ import {
 import { GridBackground } from "../../../Components/GridBackground";
 import axios from "axios";
 
+declare const route: (
+    name: string,
+    params?: string | number | Record<string, string | number | undefined>,
+) => string;
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Role = "admin" | "opd" | "vendor";
 type OpdDashboardRecord = {
@@ -115,6 +120,55 @@ type ProfilingRecord = {
             status: string;
         } | null;
     }>;
+};
+type UserDashboardRecord = {
+    id: number;
+    nama: string;
+    email: string;
+    role: "admin" | "opd" | "pihak_ketiga";
+    opd_id: number | null;
+    pihak_ketiga_id: number | null;
+    status: "aktif" | "nonaktif";
+    opd?: { id: number; nama_opd: string } | null;
+    pihak_ketiga?: { id: number; nama_vendor: string } | null;
+};
+type VendorDashboardRecord = {
+    id: number;
+    nama_vendor: string;
+    jenis_layanan?: "isp" | "perangkat" | "lainnya";
+    kontak_person?: string | null;
+    nomor_kontak?: string | null;
+};
+type VendorTicketRecord = {
+    id: number;
+    nomor_tiket: string;
+    status: string;
+    urgensi: string;
+    created_at?: string;
+    pihak_ketiga_id: number | null;
+    kendala?: {
+        jenis_kendala: string;
+        nama_kendala?: string | null;
+        deskripsi?: string | null;
+        profiling?: { opd?: { nama_opd: string } | null } | null;
+    } | null;
+    pihak_ketiga?: { nama_vendor: string } | null;
+    riwayat?: Array<{
+        id: number;
+        tanggal: string;
+        catatan: string;
+        status_baru: string | null;
+        bukti_file: string | null;
+        user?: { nama: string } | null;
+    }>;
+};
+const ticketStatusLabels: Record<string, string> = {
+    baru: "Baru",
+    diteruskan: "Diteruskan",
+    proses: "Proses",
+    menunggu_verifikasi: "Menunggu Verifikasi",
+    selesai: "Selesai",
+    ditolak: "Ditolak",
 };
 const profilingIssueLabels: Record<string, string> = {
     bandwidth_kurang: "Speed Lambat",
@@ -368,7 +422,9 @@ const profilingQueue = [
         catatan: "VLAN tidak terkonfigurasi setelah penambahan ruangan.",
     },
 ];
-type ProfilingQueueItem = (typeof profilingQueue)[number];
+type ProfilingQueueItem = Omit<(typeof profilingQueue)[number], "ping"> & {
+    ping: number | null;
+};
 
 function toProfilingQueueItem(profiling: ProfilingRecord): ProfilingQueueItem {
     const connection = profiling.opd?.koneksi_internet?.find(
@@ -389,7 +445,7 @@ function toProfilingQueueItem(profiling: ProfilingRecord): ProfilingQueueItem {
         ul: Number(speedTest?.kecepatan_unggah ?? 0),
         ping:
             speedTest?.ping_ms == null
-                ? "-"
+                ? null
                 : Number(speedTest.ping_ms),
         isp: connection?.nama_isp ?? "-",
         kondisi: speedTest?.hasil === "sesuai" ? "Baik" : "Sedang",
@@ -769,6 +825,8 @@ const FInput = ({
     error,
     required,
     hint,
+    min,
+    max,
     readOnly = false,
     className = "",
 }: {
@@ -780,6 +838,8 @@ const FInput = ({
     error?: string;
     required?: boolean;
     hint?: string;
+    min?: string;
+    max?: string;
     readOnly?: boolean;
     className?: string;
 }) => (
@@ -795,6 +855,8 @@ const FInput = ({
             type={type}
             placeholder={placeholder}
             value={value}
+            min={min}
+            max={max}
             readOnly={readOnly}
             onChange={(e) => onChange?.(e.target.value)}
             className={clx(
@@ -851,12 +913,14 @@ const FSelect = ({
     value,
     onChange,
     hint,
+    placeholder,
 }: {
     label?: string;
     options: string[];
     value?: string;
     onChange?: (v: string) => void;
     hint?: string;
+    placeholder?: string;
 }) => (
     <div className="relative">
         {label && (
@@ -876,6 +940,9 @@ const FSelect = ({
                 }}
                 className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 pr-10 text-sm text-slate-800 transition-all hover:border-blue-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
+                {placeholder && (
+                    <option value="">{placeholder}</option>
+                )}
                 {options.map((o) => (
                     <option key={o}>{o}</option>
                 ))}
@@ -2555,14 +2622,23 @@ function MasterOPD({
         id: number;
         nama: string;
         alamat: string;
-        pegawai: number;
+        pegawai: number | null;
         koneksi: number;
         profiling: string;
+        profilingPeriod: string | null;
     };
+    const now = new Date();
+    const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const employeeCount = (opd: OpdDashboardRecord) =>
+        opd.jumlah_pegawai && opd.jumlah_pegawai > 0
+            ? opd.jumlah_pegawai
+            : null;
     const mapOpd = (opd: OpdDashboardRecord): OpdRow => {
-        const latestProfiling = [...(opd.data_profiling ?? [])].sort(
-            (left, right) => right.periode.localeCompare(left.periode),
-        )[0];
+        const latestProfiling = [...(opd.data_profiling ?? [])]
+            .filter((profiling) => profiling.periode <= currentPeriod)
+            .sort(
+                (left, right) => right.periode.localeCompare(left.periode),
+            )[0];
         const statusLabels: Record<string, string> = {
             draft: "Draft",
             diajukan: "Diajukan",
@@ -2573,7 +2649,7 @@ function MasterOPD({
             id: opd.id,
             nama: opd.nama_opd,
             alamat: opd.alamat ?? "",
-            pegawai: opd.jumlah_pegawai ?? 0,
+            pegawai: employeeCount(opd),
             koneksi: (opd.koneksi_internet ?? []).filter(
                 (connection) => connection.status === "aktif",
             ).length,
@@ -2581,6 +2657,7 @@ function MasterOPD({
                 ? statusLabels[latestProfiling.status_verifikasi] ??
                   latestProfiling.status_verifikasi
                 : "Belum",
+            profilingPeriod: latestProfiling?.periode ?? null,
         };
     };
     const [data, setData] = useState<OpdRow[]>(opds.map(mapOpd));
@@ -2605,7 +2682,11 @@ function MasterOPD({
     };
     const openEdit = (o: OpdRow) => {
         setEditing(o);
-        setForm({ nama: o.nama, alamat: o.alamat, pegawai: String(o.pegawai) });
+        setForm({
+            nama: o.nama,
+            alamat: o.alamat,
+            pegawai: String(o.pegawai ?? ""),
+        });
         setErrors({});
         setModal("edit");
     };
@@ -2722,28 +2803,52 @@ function MasterOPD({
                     />
                 </div>
                 {/* Mobile */}
-                <div className="sm:hidden divide-y divide-slate-100">
+                <div className="lg:hidden divide-y divide-slate-100">
                     {filtered.map((o) => (
-                        <div key={o.id} className="p-4 space-y-2">
-                            <div className="flex items-start justify-between gap-2">
-                                <div>
+                        <div key={o.id} className="p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
                                     <p className="font-semibold text-slate-800 text-sm">
                                         {o.nama}
                                     </p>
                                     <p className="text-xs text-slate-400">
-                                        {o.alamat}
+                                        {o.alamat || "Alamat belum diisi"}
                                     </p>
                                 </div>
                                 {statusBadge(o.profiling)}
                             </div>
-                            <div className="flex items-center gap-4 text-xs text-slate-500">
-                                <span>
-                                    <Users size={14} className="inline" />{" "}
-                                    {o.pegawai} pegawai
-                                </span>
-                                <span>🔗 {o.koneksi} koneksi</span>
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                                <div>
+                                    <p className="text-slate-400">Pegawai</p>
+                                    <p className="mt-0.5 font-medium text-slate-700">
+                                        {o.pegawai ?? "Belum diisi"}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-slate-400">
+                                        Koneksi aktif
+                                    </p>
+                                    <p className="mt-0.5 font-medium text-slate-700">
+                                        {o.koneksi}
+                                    </p>
+                                </div>
+                                {o.profilingPeriod && (
+                                    <div>
+                                        <p className="text-slate-400">
+                                            Periode profiling
+                                        </p>
+                                        <p className="mt-0.5 font-medium text-slate-700">
+                                            {new Date(
+                                                `${o.profilingPeriod}-01T00:00:00`,
+                                            ).toLocaleDateString("id-ID", {
+                                                month: "long",
+                                                year: "numeric",
+                                            })}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
-                            <div className="flex gap-2 pt-1">
+                            <div className="flex flex-wrap gap-2 pt-1">
                                 <Btn
                                     variant="secondary"
                                     small
@@ -2763,8 +2868,8 @@ function MasterOPD({
                     ))}
                 </div>
                 {/* Desktop */}
-                <div className="hidden sm:block overflow-x-auto">
-                    <table className="w-full min-w-[760px] text-sm">
+                <div className="hidden lg:block overflow-x-auto">
+                    <table className="w-full min-w-[980px] text-sm">
                         <thead>
                             <tr className="border-b border-slate-100">
                                 {[
@@ -2772,13 +2877,13 @@ function MasterOPD({
                                     "Nama OPD",
                                     "Alamat",
                                     "Pegawai",
-                                    "Koneksi",
+                                    "Koneksi Aktif",
                                     "Status Profiling",
                                     "Aksi",
                                 ].map((h) => (
                                     <th
                                         key={h}
-                                        className="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider"
+                                        className="whitespace-nowrap text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider"
                                     >
                                         {h}
                                     </th>
@@ -2802,17 +2907,36 @@ function MasterOPD({
                                     <td className="px-4 py-3.5 text-slate-500 text-xs max-w-[180px] truncate">
                                         {o.alamat}
                                     </td>
-                                    <td className="px-4 py-3.5 text-slate-600">
-                                        {o.pegawai}
+                                    <td className="whitespace-nowrap px-4 py-3.5 text-slate-600">
+                                        {o.pegawai ?? (
+                                            <span className="text-slate-400 whitespace-nowrap">
+                                                Belum diisi
+                                            </span>
+                                        )}
                                     </td>
-                                    <td className="px-4 py-3.5 text-slate-600">
+                                    <td className="whitespace-nowrap px-4 py-3.5 text-slate-600">
                                         {o.koneksi}
                                     </td>
                                     <td className="px-4 py-3.5">
-                                        {statusBadge(o.profiling)}
+                                        <div className="flex min-w-[130px] flex-col items-start gap-1">
+                                            {statusBadge(o.profiling)}
+                                            {o.profilingPeriod && (
+                                                <span className="text-xs text-slate-400">
+                                                    {new Date(
+                                                        `${o.profilingPeriod}-01T00:00:00`,
+                                                    ).toLocaleDateString(
+                                                        "id-ID",
+                                                        {
+                                                            month: "short",
+                                                            year: "numeric",
+                                                        },
+                                                    )}
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3.5">
-                                        <div className="flex flex-wrap gap-2">
+                                        <div className="flex w-max flex-nowrap gap-2">
                                             <Btn
                                                 variant="secondary"
                                                 small
@@ -2905,30 +3029,41 @@ function MasterOPD({
 }
 
 // ─── Master User ──────────────────────────────────────────────────────────────
-function MasterUser() {
+function MasterUser({
+    users,
+    opds,
+    vendors,
+    onChanged,
+}: {
+    users: UserDashboardRecord[];
+    opds: OpdDashboardRecord[];
+    vendors: VendorDashboardRecord[];
+    onChanged: (users: UserDashboardRecord[]) => void;
+}) {
     type UserRow = {
         id: number;
         nama: string;
         email: string;
         role: string;
         relasi: string;
+        relasiId: string;
         status: string;
     };
-    const [data, setData] = useState<UserRow[]>(() => {
-        try {
-            const storedUsers = localStorage.getItem("siprojar.adminUsers");
-            if (!storedUsers) return userList;
-            const parsedUsers: unknown = JSON.parse(storedUsers);
-            return Array.isArray(parsedUsers)
-                ? (parsedUsers as UserRow[])
-                : userList;
-        } catch {
-            return userList;
-        }
+    const mapUser = (user: UserDashboardRecord): UserRow => ({
+        id: user.id,
+        nama: user.nama,
+        email: user.email,
+        role:
+            user.role === "pihak_ketiga"
+                ? "Vendor"
+                : user.role === "opd"
+                  ? "OPD"
+                  : "Admin",
+        relasi: user.opd?.nama_opd ?? user.pihak_ketiga?.nama_vendor ?? "—",
+        relasiId: String(user.opd_id ?? user.pihak_ketiga_id ?? ""),
+        status: user.status === "aktif" ? "Aktif" : "Nonaktif",
     });
-    useEffect(() => {
-        localStorage.setItem("siprojar.adminUsers", JSON.stringify(data));
-    }, [data]);
+    const [data, setData] = useState<UserRow[]>(() => users.map(mapUser));
     const [search, setSearch] = useState("");
     const [roleFilter, setRoleFilter] = useState("Semua Role");
     const [statusFilter, setStatusFilter] = useState("Semua Status");
@@ -2938,11 +3073,13 @@ function MasterUser() {
         nama: "",
         email: "",
         pw: "",
-        role: "OPD",
-        relasi: "",
-        status: "Aktif",
+        role: "opd",
+        relasiId: "",
+        status: "aktif",
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [requestError, setRequestError] = useState("");
+    const [saving, setSaving] = useState(false);
     const filteredUsers = data.filter((user) => {
         const matchesSearch = `${user.nama} ${user.email} ${user.relasi}`
             .toLowerCase()
@@ -2959,11 +3096,12 @@ function MasterUser() {
             nama: "",
             email: "",
             pw: "",
-            role: "OPD",
-            relasi: "",
-            status: "Aktif",
+            role: "opd",
+            relasiId: "",
+            status: "aktif",
         });
         setErrors({});
+        setRequestError("");
         setModal("add");
     };
     const openEdit = (u: UserRow) => {
@@ -2972,11 +3110,17 @@ function MasterUser() {
             nama: u.nama,
             email: u.email,
             pw: "",
-            role: u.role,
-            relasi: u.relasi,
-            status: u.status,
+            role:
+                u.role === "Vendor"
+                    ? "pihak_ketiga"
+                    : u.role === "OPD"
+                      ? "opd"
+                      : "admin",
+            relasiId: u.relasiId,
+            status: u.status === "Aktif" ? "aktif" : "nonaktif",
         });
         setErrors({});
+        setRequestError("");
         setModal("edit");
     };
     const openDelete = (u: UserRow) => {
@@ -2989,60 +3133,129 @@ function MasterUser() {
         if (!form.nama.trim()) e.nama = "Nama wajib diisi";
         if (!form.email.includes("@")) e.email = "Format email tidak valid";
         if (modal === "add" && form.pw.length < 8) e.pw = "Min. 8 karakter";
-        if (!form.relasi.trim()) e.relasi = "Wajib diisi";
-        const dup = data.find(
-            (u) => u.email === form.email && u.id !== editing?.id,
-        );
-        if (dup) e.email = "Email sudah digunakan akun lain";
+        if (form.role === "opd" && !form.relasiId)
+            e.relasi = "Pilih OPD untuk akun ini";
+        if (form.role === "pihak_ketiga" && !form.relasiId)
+            e.relasi = "Pilih vendor untuk akun ini";
         setErrors(e);
         return Object.keys(e).length === 0;
     };
-    const save = () => {
+    const save = async () => {
         if (!validate()) return;
-        if (modal === "add")
-            setData([
-                ...data,
-                {
-                    id: Date.now(),
-                    nama: form.nama,
-                    email: form.email,
-                    role: form.role,
-                    relasi: form.relasi,
-                    status: form.status,
-                },
-            ]);
-        else if (editing)
-            setData(
-                data.map((u) =>
-                    u.id === editing.id
-                        ? {
-                              ...u,
-                              nama: form.nama,
-                              email: form.email,
-                              role: form.role,
-                              relasi: form.relasi,
-                              status: form.status,
-                          }
-                        : u,
-                ),
+        setSaving(true);
+        setRequestError("");
+        try {
+            const payload = {
+                nama: form.nama,
+                email: form.email,
+                role: form.role,
+                opd_id:
+                    form.role === "opd" ? Number(form.relasiId) : null,
+                pihak_ketiga_id:
+                    form.role === "pihak_ketiga"
+                        ? Number(form.relasiId)
+                        : null,
+                status: form.status,
+                ...(form.pw ? { password: form.pw } : {}),
+            };
+            const response =
+                modal === "add"
+                    ? await axios.post(route("users.store"), payload, {
+                          headers: { Accept: "application/json" },
+                      })
+                    : await axios.put(
+                          route("users.update", { user: editing?.id }),
+                          payload,
+                          { headers: { Accept: "application/json" } },
+                      );
+            const savedUser = response.data.user as UserDashboardRecord;
+            const nextUsers =
+                modal === "add"
+                    ? [...users, savedUser]
+                    : users.map((user) =>
+                          user.id === savedUser.id ? savedUser : user,
+                      );
+            onChanged(nextUsers);
+            setData(nextUsers.map(mapUser));
+            setModal(null);
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                const backendErrors = error.response?.data?.errors ?? {};
+                setErrors({
+                    nama: backendErrors.nama?.[0] ?? "",
+                    email: backendErrors.email?.[0] ?? "",
+                    pw: backendErrors.password?.[0] ?? "",
+                    relasi:
+                        backendErrors.opd_id?.[0] ??
+                        backendErrors.pihak_ketiga_id?.[0] ??
+                        "",
+                });
+                setRequestError(
+                    error.response?.data?.message ??
+                        "Akun gagal disimpan. Silakan periksa kembali datanya.",
+                );
+            } else {
+                setRequestError("Terjadi kesalahan saat menyimpan akun.");
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+    const del = async () => {
+        if (!editing) return;
+        setSaving(true);
+        setRequestError("");
+        try {
+            await axios.delete(route("users.destroy", { user: editing.id }), {
+                headers: { Accept: "application/json" },
+            });
+            const nextUsers = users.filter((user) => user.id !== editing.id);
+            onChanged(nextUsers);
+            setData(nextUsers.map(mapUser));
+            setModal(null);
+        } catch (error) {
+            setRequestError(
+                axios.isAxiosError(error)
+                    ? error.response?.data?.message ?? "Akun gagal dihapus."
+                    : "Terjadi kesalahan saat menghapus akun.",
             );
-        setModal(null);
+            setModal(null);
+        } finally {
+            setSaving(false);
+        }
     };
-    const del = () => {
-        if (editing) setData(data.filter((u) => u.id !== editing.id));
-        setModal(null);
+    const toggleStatus = async (row: UserRow) => {
+        const user = users.find((item) => item.id === row.id);
+        if (!user) return;
+        setRequestError("");
+        try {
+            const response = await axios.put(
+                route("users.update", { user: user.id }),
+                {
+                    nama: user.nama,
+                    email: user.email,
+                    role: user.role,
+                    opd_id: user.opd_id,
+                    pihak_ketiga_id: user.pihak_ketiga_id,
+                    status: user.status === "aktif" ? "nonaktif" : "aktif",
+                },
+                { headers: { Accept: "application/json" } },
+            );
+            const updatedUser = response.data.user as UserDashboardRecord;
+            const nextUsers = users.map((item) =>
+                item.id === updatedUser.id ? updatedUser : item,
+            );
+            onChanged(nextUsers);
+            setData(nextUsers.map(mapUser));
+        } catch (error) {
+            setRequestError(
+                axios.isAxiosError(error)
+                    ? error.response?.data?.message ??
+                          "Status akun gagal diperbarui."
+                    : "Terjadi kesalahan saat memperbarui status akun.",
+            );
+        }
     };
-    const toggleStatus = (u: UserRow) =>
-        setData(
-            data.map((x) =>
-                x.id === u.id
-                    ? {
-                          ...x,
-                          status: x.status === "Aktif" ? "Nonaktif" : "Aktif",
-                      }
-                    : x,
-            ),
-        );
 
     return (
         <div>
@@ -3051,6 +3264,11 @@ function MasterUser() {
                 sub="Kelola akun pengguna sistem berdasarkan role dan OPD/vendor"
                 action={<Btn onClick={openAdd}>＋ Tambah Akun</Btn>}
             />
+            {requestError && !modal && (
+                <div className="mb-4">
+                    <InfoBox type="error">{requestError}</InfoBox>
+                </div>
+            )}
             <Card>
                 <div className="p-4 border-b border-slate-100 flex gap-3 flex-wrap">
                     <div className="flex-1 min-w-[180px]">
@@ -3143,6 +3361,13 @@ function MasterUser() {
                             </div>
                         </div>
                     ))}
+                    {filteredUsers.length === 0 && (
+                        <p className="px-4 py-8 text-center text-sm text-slate-400">
+                            {data.length === 0
+                                ? "Belum ada akun pengguna di database."
+                                : "Tidak ada akun yang sesuai dengan filter."}
+                        </p>
+                    )}
                 </div>
                 {/* Desktop */}
                 <div className="hidden sm:block overflow-x-auto">
@@ -3247,6 +3472,18 @@ function MasterUser() {
                                     </td>
                                 </tr>
                             ))}
+                            {filteredUsers.length === 0 && (
+                                <tr>
+                                    <td
+                                        colSpan={5}
+                                        className="px-4 py-8 text-center text-sm text-slate-400"
+                                    >
+                                        {data.length === 0
+                                            ? "Belum ada akun pengguna di database."
+                                            : "Tidak ada akun yang sesuai dengan filter."}
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -3260,6 +3497,9 @@ function MasterUser() {
                     onClose={() => setModal(null)}
                 >
                     <div className="p-6 space-y-4">
+                        {requestError && (
+                            <InfoBox type="error">{requestError}</InfoBox>
+                        )}
                         <InfoBox type="info">
                             {modal === "add"
                                 ? "Akun dapat langsung digunakan setelah disimpan. Kirimkan kredensial secara aman."
@@ -3299,27 +3539,109 @@ function MasterUser() {
                         <FSelect
                             label="Role"
                             options={["Admin", "OPD", "Vendor"]}
-                            value={form.role}
-                            onChange={(v) => setForm({ ...form, role: v })}
+                            value={
+                                form.role === "pihak_ketiga"
+                                    ? "Vendor"
+                                    : form.role === "opd"
+                                      ? "OPD"
+                                      : "Admin"
+                            }
+                            onChange={(value) =>
+                                setForm({
+                                    ...form,
+                                    role:
+                                        value === "Vendor"
+                                            ? "pihak_ketiga"
+                                            : value.toLowerCase(),
+                                    relasiId: "",
+                                })
+                            }
                         />
-                        <FInput
-                            label="OPD / Pihak Ketiga"
-                            placeholder="Nama instansi atau vendor"
-                            value={form.relasi}
-                            onChange={(v) => setForm({ ...form, relasi: v })}
-                            error={errors.relasi}
-                            required
-                        />
+                        {form.role === "opd" && (
+                            <>
+                                <FSelect
+                                    label="OPD"
+                                    options={opds.map((opd) => opd.nama_opd)}
+                                    placeholder="Pilih OPD"
+                                    value={
+                                        opds.find(
+                                            (opd) =>
+                                                String(opd.id) ===
+                                                form.relasiId,
+                                        )?.nama_opd ?? ""
+                                    }
+                                    onChange={(name) =>
+                                        setForm({
+                                            ...form,
+                                            relasiId: String(
+                                                opds.find(
+                                                    (opd) =>
+                                                        opd.nama_opd === name,
+                                                )?.id ?? "",
+                                            ),
+                                        })
+                                    }
+                                />
+                                {errors.relasi && (
+                                    <p className="text-xs text-red-600">
+                                        {errors.relasi}
+                                    </p>
+                                )}
+                            </>
+                        )}
+                        {form.role === "pihak_ketiga" && (
+                            <>
+                                <FSelect
+                                    label="Vendor / Pihak Ketiga"
+                                    options={vendors.map(
+                                        (vendor) => vendor.nama_vendor,
+                                    )}
+                                    placeholder="Pilih vendor"
+                                    value={
+                                        vendors.find(
+                                            (vendor) =>
+                                                String(vendor.id) ===
+                                                form.relasiId,
+                                        )?.nama_vendor ?? ""
+                                    }
+                                    onChange={(name) =>
+                                        setForm({
+                                            ...form,
+                                            relasiId: String(
+                                                vendors.find(
+                                                    (vendor) =>
+                                                        vendor.nama_vendor ===
+                                                        name,
+                                                )?.id ?? "",
+                                            ),
+                                        })
+                                    }
+                                />
+                                {errors.relasi && (
+                                    <p className="text-xs text-red-600">
+                                        {errors.relasi}
+                                    </p>
+                                )}
+                            </>
+                        )}
                         <FSelect
                             label="Status Akun"
                             options={["Aktif", "Nonaktif"]}
-                            value={form.status}
-                            onChange={(v) => setForm({ ...form, status: v })}
+                            value={
+                                form.status === "aktif" ? "Aktif" : "Nonaktif"
+                            }
+                            onChange={(value) =>
+                                setForm({
+                                    ...form,
+                                    status: value.toLowerCase(),
+                                })
+                            }
                         />
                     </div>
                     <div className="px-6 pb-6 flex gap-3">
-                        <Btn onClick={save}>
-                            <Save size={15} /> Simpan Akun
+                        <Btn disabled={saving} onClick={save}>
+                            <Save size={15} />{" "}
+                            {saving ? "Menyimpan..." : "Simpan Akun"}
                         </Btn>
                         <Btn variant="secondary" onClick={() => setModal(null)}>
                             Batal
@@ -3357,6 +3679,20 @@ function FormProfiling({
         ["draft", "dikembalikan"].includes(
             existingProfiling.status_verifikasi,
         );
+    const now = new Date();
+    const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const currentPeriod = todayDate.slice(0, 7);
+    const period = existingProfiling?.periode ?? currentPeriod;
+    const periodStart = `${period}-01`;
+    const periodEnd = `${period}-${String(
+        new Date(
+            Number(period.slice(0, 4)),
+            Number(period.slice(5, 7)),
+            0,
+        ).getDate(),
+    ).padStart(2, "0")}`;
+    const maxTestDate =
+        period < currentPeriod ? periodEnd : todayDate;
     const existingConnection = existingProfiling?.opd?.koneksi_internet?.find(
         (item) => item.status === "aktif",
     );
@@ -3406,14 +3742,19 @@ function FormProfiling({
             ? "Sedang — Ada penurunan performa"
             : "Baik — Kecepatan sesuai bandwidth",
     );
-    const [testDate, setTestDate] = useState(
-        existingProfiling?.speed_test?.tanggal_test ??
-            (existingProfiling?.periode
-                ? `${existingProfiling.periode}-01`
-                : undefined) ??
-            new Date().toISOString().slice(0, 10),
-    );
-    const period = testDate.slice(0, 7);
+    const [testDate, setTestDate] = useState(() => {
+        const savedDate = existingProfiling?.speed_test?.tanggal_test;
+        if (
+            savedDate &&
+            savedDate.startsWith(`${period}-`) &&
+            savedDate >= periodStart &&
+            savedDate <= maxTestDate
+        ) {
+            return savedDate;
+        }
+
+        return period === currentPeriod ? todayDate : periodStart;
+    });
     const [profilingPeriod, setProfilingPeriod] = useState(
         existingProfiling?.periode ?? null,
     );
@@ -3448,6 +3789,12 @@ function FormProfiling({
     ];
     const saveProfiling = async (submit: boolean) => {
         setSaveError("");
+        if (period > currentPeriod) {
+            setSaveError(
+                "Profiling untuk bulan mendatang belum dapat dibuat atau diubah.",
+            );
+            return;
+        }
         const kendalaTypes: Record<string, string> = {
             "Koneksi Putus": "bandwidth_kurang",
             "Speed Lambat": "bandwidth_kurang",
@@ -3791,7 +4138,9 @@ function FormProfiling({
                         <FInput
                             label="Tanggal Pengukuran"
                             type="date"
-                            hint="Bulan pada tanggal ini menjadi periode profiling"
+                            min={periodStart}
+                            max={maxTestDate}
+                            hint={`Periode profiling: ${period}. Untuk input baru hanya bulan berjalan yang dapat dipilih.`}
                             value={testDate}
                             onChange={setTestDate}
                         />
@@ -4791,10 +5140,12 @@ function KelolaTicket({
     tickets,
     vendors,
     onChanged,
+    onVendorCreated,
 }: {
     tickets: any[];
-    vendors: Array<{ id: number; nama_vendor: string }>;
+    vendors: VendorDashboardRecord[];
     onChanged: (ticket: any) => void;
+    onVendorCreated: (vendor: VendorDashboardRecord) => void;
 }) {
     const ticketRows = tickets.map((ticket) => ({
         databaseId: ticket.id,
@@ -4867,6 +5218,15 @@ function KelolaTicket({
     const [actionDone, setActionDone] = useState(false);
     const [actionError, setActionError] = useState("");
     const [saving, setSaving] = useState(false);
+    const [vendorModal, setVendorModal] = useState(false);
+    const [vendorForm, setVendorForm] = useState({
+        nama_vendor: "",
+        jenis_layanan: "lainnya",
+        kontak_person: "",
+        nomor_kontak: "",
+    });
+    const [vendorError, setVendorError] = useState("");
+    const [vendorSaving, setVendorSaving] = useState(false);
 
     const filtered = ticketRows.filter(
         (t) =>
@@ -4905,12 +5265,48 @@ function KelolaTicket({
             setSaving(false);
         }
     };
+    const createVendor = async () => {
+        setVendorError("");
+        setVendorSaving(true);
+        try {
+            const response = await axios.post(
+                route("pihak-ketiga.store"),
+                vendorForm,
+                { headers: { Accept: "application/json" } },
+            );
+            const savedVendor = response.data.vendor as VendorDashboardRecord;
+            onVendorCreated(savedVendor);
+            setVendor(savedVendor.nama_vendor);
+            setVendorForm({
+                nama_vendor: "",
+                jenis_layanan: "lainnya",
+                kontak_person: "",
+                nomor_kontak: "",
+            });
+            setVendorModal(false);
+        } catch (error) {
+            setVendorError(
+                axios.isAxiosError(error)
+                    ? error.response?.data?.errors?.nama_vendor?.[0] ??
+                          error.response?.data?.message ??
+                          "Vendor gagal ditambahkan."
+                    : "Terjadi kesalahan saat menambahkan vendor.",
+            );
+        } finally {
+            setVendorSaving(false);
+        }
+    };
 
     return (
         <div>
             <PageHeader
                 title="Kelola Tiket Pengaduan"
                 sub="Tinjau tiket masuk dan tentukan penanganan: internal Diskominfo atau diteruskan ke vendor"
+                action={
+                    <Btn variant="secondary" onClick={() => setVendorModal(true)}>
+                        <Users size={15} /> Tambah Vendor
+                    </Btn>
+                }
             />
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                 <div className="lg:col-span-2 space-y-3">
@@ -5219,6 +5615,94 @@ function KelolaTicket({
                     )}
                 </div>
             </div>
+            {vendorModal && (
+                <Modal
+                    title="Tambah Vendor / Pihak Ketiga"
+                    onClose={() => setVendorModal(false)}
+                >
+                    <div className="space-y-4 p-6">
+                        <InfoBox type="info">
+                            Data vendor disimpan sebagai pihak ketiga dan
+                            langsung tersedia untuk penerusan tiket. Akun
+                            login vendor dapat dibuat terpisah melalui Data
+                            User.
+                        </InfoBox>
+                        {vendorError && (
+                            <InfoBox type="error">{vendorError}</InfoBox>
+                        )}
+                        <FInput
+                            label="Nama Vendor"
+                            value={vendorForm.nama_vendor}
+                            onChange={(value) =>
+                                setVendorForm({
+                                    ...vendorForm,
+                                    nama_vendor: value,
+                                })
+                            }
+                            required
+                        />
+                        <FSelect
+                            label="Jenis Layanan"
+                            options={["Lainnya", "ISP", "Perangkat"]}
+                            value={
+                                vendorForm.jenis_layanan === "isp"
+                                    ? "ISP"
+                                    : vendorForm.jenis_layanan === "perangkat"
+                                      ? "Perangkat"
+                                      : "Lainnya"
+                            }
+                            onChange={(value) =>
+                                setVendorForm({
+                                    ...vendorForm,
+                                    jenis_layanan:
+                                        value === "ISP"
+                                            ? "isp"
+                                            : value === "Perangkat"
+                                              ? "perangkat"
+                                              : "lainnya",
+                                })
+                            }
+                        />
+                        <FInput
+                            label="Nama Kontak (opsional)"
+                            value={vendorForm.kontak_person}
+                            onChange={(value) =>
+                                setVendorForm({
+                                    ...vendorForm,
+                                    kontak_person: value,
+                                })
+                            }
+                        />
+                        <FInput
+                            label="Nomor Kontak (opsional)"
+                            value={vendorForm.nomor_kontak}
+                            onChange={(value) =>
+                                setVendorForm({
+                                    ...vendorForm,
+                                    nomor_kontak: value,
+                                })
+                            }
+                        />
+                    </div>
+                    <div className="flex gap-3 px-6 pb-6">
+                        <Btn
+                            disabled={
+                                vendorSaving || !vendorForm.nama_vendor.trim()
+                            }
+                            onClick={createVendor}
+                        >
+                            <Save size={15} />{" "}
+                            {vendorSaving ? "Menyimpan..." : "Simpan Vendor"}
+                        </Btn>
+                        <Btn
+                            variant="secondary"
+                            onClick={() => setVendorModal(false)}
+                        >
+                            Batal
+                        </Btn>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }
@@ -6568,75 +7052,50 @@ function PantauTiket({ tickets }: { tickets: any[] }) {
 }
 
 // ─── Dashboard Vendor ─────────────────────────────────────────────────────────
-function DashboardVendor({ onNav }: { onNav: (s: Screen) => void }) {
-    const [ticketStatuses] = useState<Record<string, string>>(() => {
-        try {
-            return JSON.parse(
-                localStorage.getItem("siprojar.vendorTicketStatuses") ?? "{}",
-            );
-        } catch {
-            return {};
-        }
-    });
-    const [accepted] = useState<Record<string, boolean>>(() => {
-        try {
-            return JSON.parse(
-                localStorage.getItem("siprojar.vendorAccepted") ?? "{}",
-            );
-        } catch {
-            return {};
-        }
-    });
-    const [rejected] = useState<Record<string, boolean>>(() => {
-        try {
-            return JSON.parse(
-                localStorage.getItem("siprojar.vendorRejected") ?? "{}",
-            );
-        } catch {
-            return {};
-        }
-    });
-    const mine = ticketList
-        .filter((ticket) => ticket.vendor === "CV Jaringan Sejahtera")
-        .map((ticket) => ({
-            ...ticket,
-            status:
-                ticketStatuses[ticket.id] ??
-                (rejected[ticket.id]
-                    ? "Ditolak"
-                    : accepted[ticket.id] && ticket.status === "Diteruskan"
-                      ? "Proses"
-                      : ticket.status),
-        }));
+function DashboardVendor({
+    onNav,
+    tickets,
+    vendorName,
+}: {
+    onNav: (s: Screen) => void;
+    tickets: VendorTicketRecord[];
+    vendorName: string;
+}) {
+    const processing = tickets.filter((ticket) => ticket.status === "proses");
+    const pending = tickets.filter(
+        (ticket) =>
+            ticket.status === "diteruskan" ||
+            ticket.status === "menunggu_verifikasi",
+    );
     return (
         <div className="space-y-6">
             <PageHeader
                 title="Dashboard Vendor"
-                sub="CV Jaringan Sejahtera · Ikhtisar penugasan tiket"
+                sub={`${vendorName} · Ikhtisar penugasan tiket`}
             />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <StatCard
                     label="Total Ditugaskan"
-                    value={mine.length}
+                    value={tickets.length}
                     icon={<ClipboardList size={20} />}
                     color="blue"
                 />
                 <StatCard
                     label="Sedang Proses"
-                    value={mine.filter((t) => t.status === "Proses").length}
+                    value={processing.length}
                     icon={<Wrench size={20} />}
                     color="amber"
                 />
                 <StatCard
-                    label="Selesai Bulan Ini"
-                    value={mine.filter((t) => t.status === "Selesai").length}
+                    label="Menunggu Respons / Verifikasi"
+                    value={pending.length}
                     icon={<CheckCircle2 size={20} />}
                     color="green"
                 />
                 <StatCard
-                    label="Rata-rata Waktu"
-                    value="2.4 hr"
-                    icon={<FileClock size={20} />}
+                    label="Selesai"
+                    value={tickets.filter((t) => t.status === "selesai").length}
+                    icon={<CheckCircle2 size={20} />}
                     color="purple"
                 />
             </div>
@@ -6653,32 +7112,44 @@ function DashboardVendor({ onNav }: { onNav: (s: Screen) => void }) {
                         Lihat semua →
                     </Btn>
                 </div>
-                {mine.map((t) => (
+                {tickets.map((ticket) => (
                     <div
-                        key={t.id}
+                        key={ticket.id}
                         className="flex items-center gap-3 py-3 border-b border-slate-100 last:border-0"
                     >
                         <div
                             className={clx(
                                 "w-2.5 h-2.5 rounded-full flex-shrink-0",
                                 {
-                                    Proses: "bg-amber-400",
-                                    Selesai: "bg-green-500",
-                                    Diteruskan: "bg-purple-500",
-                                }[t.status] ?? "bg-slate-400",
+                                    proses: "bg-amber-400",
+                                    selesai: "bg-green-500",
+                                    diteruskan: "bg-purple-500",
+                                }[ticket.status] ?? "bg-slate-400",
                             )}
                         />
                         <div className="flex-1 min-w-0">
                             <p className="font-semibold text-slate-800 text-sm">
-                                {t.id} — {t.kendala}
+                                {ticket.nomor_tiket} —{" "}
+                                {getProfilingIssueLabel(
+                                    ticket.kendala ?? { jenis_kendala: "" },
+                                )}
                             </p>
                             <p className="text-xs text-slate-400">
-                                {t.opd} · {t.tanggal}
+                                {ticket.kendala?.profiling?.opd?.nama_opd ??
+                                    "OPD"}{" "}
+                                · {ticket.created_at?.slice(0, 10) ?? "-"}
                             </p>
                         </div>
-                        {statusBadge(t.status)}
+                        {statusBadge(
+                            ticketStatusLabels[ticket.status] ?? ticket.status,
+                        )}
                     </div>
                 ))}
+                {tickets.length === 0 && (
+                    <p className="py-8 text-center text-sm text-slate-400">
+                        Belum ada tiket yang ditugaskan kepada vendor ini.
+                    </p>
+                )}
             </Card>
             <div className="flex gap-3 flex-wrap">
                 <Btn onClick={() => onNav("tiket-masuk")}>
@@ -6690,6 +7161,142 @@ function DashboardVendor({ onNav }: { onNav: (s: Screen) => void }) {
                 >
                     <Upload size={16} /> Update Penanganan
                 </Btn>
+            </div>
+        </div>
+    );
+}
+
+function DatabaseHandlingReview({
+    tickets,
+    onChanged,
+}: {
+    tickets: VendorTicketRecord[];
+    onChanged: (ticket: VendorTicketRecord) => void;
+}) {
+    const awaitingReview = tickets.filter(
+        (ticket) => ticket.status === "menunggu_verifikasi",
+    );
+    const [savingId, setSavingId] = useState<number | null>(null);
+    const [error, setError] = useState("");
+    const resolve = async (
+        ticket: VendorTicketRecord,
+        status: "selesai" | "proses",
+    ) => {
+        setSavingId(ticket.id);
+        setError("");
+        try {
+            const response = await axios.post(
+                route("tiket.status", { tiket: ticket.id }),
+                {
+                    status,
+                    catatan:
+                        status === "selesai"
+                            ? "Admin memverifikasi bukti dan menyetujui hasil penanganan."
+                            : "Admin meminta vendor melanjutkan penanganan.",
+                },
+                { headers: { Accept: "application/json" } },
+            );
+            onChanged(response.data.ticket);
+        } catch (requestError) {
+            setError(
+                axios.isAxiosError(requestError)
+                    ? requestError.response?.data?.message ??
+                          "Keputusan verifikasi gagal disimpan."
+                    : "Terjadi kesalahan saat menyimpan keputusan.",
+            );
+        } finally {
+            setSavingId(null);
+        }
+    };
+
+    return (
+        <div>
+            <PageHeader
+                title="Verifikasi Penanganan"
+                sub="Periksa bukti dari vendor sebelum menyelesaikan tiket."
+            />
+            {error && (
+                <div className="mb-4">
+                    <InfoBox type="error">{error}</InfoBox>
+                </div>
+            )}
+            <div className="space-y-4">
+                {awaitingReview.map((ticket) => {
+                    const evidence = ticket.riwayat?.find(
+                        (history) =>
+                            history.bukti_file &&
+                            history.status_baru === "menunggu_verifikasi",
+                    );
+                    return (
+                        <Card key={ticket.id} className="space-y-4 p-5">
+                            <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono text-xs text-slate-400">
+                                        {ticket.nomor_tiket}
+                                    </span>
+                                    {statusBadge("Menunggu Verifikasi")}
+                                </div>
+                                <h3 className="mt-1 font-bold text-slate-800">
+                                    {getProfilingIssueLabel(
+                                        ticket.kendala ?? {
+                                            jenis_kendala: "",
+                                        },
+                                    )}
+                                </h3>
+                                <p className="text-sm text-slate-400">
+                                    {ticket.kendala?.profiling?.opd?.nama_opd ??
+                                        "OPD"}{" "}
+                                    · Vendor:{" "}
+                                    {ticket.pihak_ketiga?.nama_vendor ?? "-"}
+                                </p>
+                            </div>
+                            {evidence && (
+                                <div className="rounded-xl bg-slate-50 p-4">
+                                    <p className="text-sm text-slate-700">
+                                        {evidence.catatan}
+                                    </p>
+                                    <a
+                                        href={route(
+                                            "tiket.evidence",
+                                            evidence.id,
+                                        )}
+                                        className="mt-2 inline-flex items-center gap-1 text-sm text-blue-700 hover:underline"
+                                    >
+                                        <Download size={14} /> Unduh bukti
+                                        penanganan
+                                    </a>
+                                </div>
+                            )}
+                            <div className="flex flex-wrap gap-3">
+                                <Btn
+                                    variant="success"
+                                    disabled={savingId === ticket.id}
+                                    onClick={() =>
+                                        resolve(ticket, "selesai")
+                                    }
+                                >
+                                    <CheckCircle2 size={16} /> Setujui &
+                                    Selesaikan
+                                </Btn>
+                                <Btn
+                                    variant="secondary"
+                                    disabled={savingId === ticket.id}
+                                    onClick={() =>
+                                        resolve(ticket, "proses")
+                                    }
+                                >
+                                    <RotateCcw size={16} /> Kembalikan ke
+                                    Proses
+                                </Btn>
+                            </div>
+                        </Card>
+                    );
+                })}
+                {awaitingReview.length === 0 && (
+                    <Card className="p-10 text-center text-sm text-slate-500">
+                        Tidak ada hasil penanganan yang menunggu verifikasi.
+                    </Card>
+                )}
             </div>
         </div>
     );
@@ -7279,6 +7886,471 @@ function UpdatePenanganan() {
     );
 }
 
+function VendorTicketInbox({
+    tickets,
+    onChanged,
+    onNav,
+}: {
+    tickets: VendorTicketRecord[];
+    onChanged: (ticket: VendorTicketRecord) => void;
+    onNav: (screen: Screen) => void;
+}) {
+    const [selectedId, setSelectedId] = useState<number | null>(null);
+    const [rejecting, setRejecting] = useState(false);
+    const [reason, setReason] = useState("");
+    const [error, setError] = useState("");
+    const [saving, setSaving] = useState(false);
+    const selected = tickets.find((ticket) => ticket.id === selectedId) ?? null;
+    const submitResponse = async (status: "proses" | "ditolak") => {
+        if (!selected) return;
+        setSaving(true);
+        setError("");
+        try {
+            const response = await axios.post(
+                route("vendor.tiket.status", { tiket: selected.id }),
+                {
+                    status,
+                    catatan:
+                        status === "proses"
+                            ? "Vendor menerima tiket dan mulai melakukan penanganan."
+                            : reason,
+                },
+                { headers: { Accept: "application/json" } },
+            );
+            onChanged(response.data.ticket);
+            setRejecting(false);
+            setReason("");
+        } catch (requestError) {
+            setError(
+                axios.isAxiosError(requestError)
+                    ? requestError.response?.data?.message ??
+                          "Respons tiket gagal disimpan."
+                    : "Terjadi kesalahan saat merespons tiket.",
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div>
+            <PageHeader
+                title="Tiket Masuk"
+                sub="Daftar tiket yang ditugaskan kepada vendor ini. Respons dan perubahan status tersimpan ke sistem."
+            />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+                <div className="space-y-3 lg:col-span-2">
+                    {tickets.map((ticket) => (
+                        <Card
+                            key={ticket.id}
+                            className={clx(
+                                "p-4",
+                                selectedId === ticket.id
+                                    ? "border-blue-500 ring-1 ring-blue-400"
+                                    : "",
+                            )}
+                            onClick={() => {
+                                setSelectedId(ticket.id);
+                                setRejecting(false);
+                                setError("");
+                            }}
+                        >
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-xs text-slate-400">
+                                    {ticket.nomor_tiket}
+                                </span>
+                                {statusBadge(
+                                    ticketStatusLabels[ticket.status] ??
+                                        ticket.status,
+                                )}
+                            </div>
+                            <p className="mt-1 font-semibold text-sm text-slate-800">
+                                {getProfilingIssueLabel(
+                                    ticket.kendala ?? { jenis_kendala: "" },
+                                )}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                                {ticket.kendala?.profiling?.opd?.nama_opd ??
+                                    "OPD"}{" "}
+                                · {ticket.created_at?.slice(0, 10) ?? "-"}
+                            </p>
+                        </Card>
+                    ))}
+                    {tickets.length === 0 && (
+                        <Card className="p-8 text-center text-sm text-slate-500">
+                            Belum ada tiket yang ditugaskan kepada vendor ini.
+                        </Card>
+                    )}
+                </div>
+                <div className="lg:col-span-3">
+                    {selected ? (
+                        <Card className="sticky top-4 space-y-5 p-6">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <span className="font-mono text-xs text-slate-400">
+                                        {selected.nomor_tiket}
+                                    </span>
+                                    <h3 className="mt-1 text-lg font-extrabold text-slate-800">
+                                        {getProfilingIssueLabel(
+                                            selected.kendala ?? {
+                                                jenis_kendala: "",
+                                            },
+                                        )}
+                                    </h3>
+                                    <p className="text-sm text-slate-400">
+                                        {selected.kendala?.profiling?.opd
+                                            ?.nama_opd ?? "OPD"}{" "}
+                                        · {selected.created_at?.slice(0, 10) ?? "-"}
+                                    </p>
+                                </div>
+                                {statusBadge(
+                                    ticketStatusLabels[selected.status] ??
+                                        selected.status,
+                                )}
+                            </div>
+                            <div className="rounded-xl bg-slate-50 p-4">
+                                <p className="mb-1 text-xs font-semibold text-slate-400">
+                                    Deskripsi Kendala
+                                </p>
+                                <p className="text-sm text-slate-700">
+                                    {selected.kendala?.deskripsi || "Tidak ada deskripsi."}
+                                </p>
+                            </div>
+                            {error && <InfoBox type="error">{error}</InfoBox>}
+                            {selected.status === "diteruskan" && (
+                                <div className="space-y-3 rounded-2xl border border-slate-200 p-4">
+                                    <p className="text-sm font-bold text-slate-700">
+                                        Respons Tiket
+                                    </p>
+                                    {!rejecting ? (
+                                        <div className="flex flex-wrap gap-3">
+                                            <Btn
+                                                variant="success"
+                                                disabled={saving}
+                                                onClick={() =>
+                                                    submitResponse("proses")
+                                                }
+                                            >
+                                                <CheckCircle2 size={16} />{" "}
+                                                {saving
+                                                    ? "Menyimpan..."
+                                                    : "Terima & Mulai Proses"}
+                                            </Btn>
+                                            <Btn
+                                                variant="danger"
+                                                disabled={saving}
+                                                onClick={() =>
+                                                    setRejecting(true)
+                                                }
+                                            >
+                                                <XCircle size={16} /> Tolak Tiket
+                                            </Btn>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <FTextarea
+                                                label="Alasan Penolakan"
+                                                required
+                                                rows={3}
+                                                value={reason}
+                                                onChange={setReason}
+                                                placeholder="Jelaskan alasan tiket tidak dapat ditangani."
+                                            />
+                                            <div className="flex gap-3">
+                                                <Btn
+                                                    variant="danger"
+                                                    disabled={
+                                                        saving || !reason.trim()
+                                                    }
+                                                    onClick={() =>
+                                                        submitResponse("ditolak")
+                                                    }
+                                                >
+                                                    {saving
+                                                        ? "Menyimpan..."
+                                                        : "Konfirmasi Tolak"}
+                                                </Btn>
+                                                <Btn
+                                                    variant="ghost"
+                                                    onClick={() =>
+                                                        setRejecting(false)
+                                                    }
+                                                >
+                                                    Batal
+                                                </Btn>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                            {selected.status === "proses" && (
+                                <InfoBox type="info">
+                                    Tiket sedang ditangani. Tambahkan catatan
+                                    perkembangan atau kirim hasil penanganan
+                                    melalui menu Update Penanganan.
+                                </InfoBox>
+                            )}
+                            {selected.status === "menunggu_verifikasi" && (
+                                <InfoBox type="success">
+                                    Hasil penanganan dan bukti sudah dikirim
+                                    kepada Admin untuk diverifikasi.
+                                </InfoBox>
+                            )}
+                            {selected.status === "ditolak" && (
+                                <InfoBox type="error">
+                                    Tiket ini ditolak. Alasan tercatat di
+                                    histori dan dapat dilihat Admin.
+                                </InfoBox>
+                            )}
+                            {["proses", "menunggu_verifikasi"].includes(
+                                selected.status,
+                            ) && (
+                                <Btn
+                                    variant="secondary"
+                                    onClick={() =>
+                                        onNav("update-penanganan")
+                                    }
+                                >
+                                    <Upload size={15} /> Update Penanganan
+                                </Btn>
+                            )}
+                            <div>
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                    Histori Tiket
+                                </p>
+                                {(selected.riwayat ?? []).map((item) => (
+                                    <div
+                                        key={item.id}
+                                        className="border-t border-slate-100 py-2 text-sm"
+                                    >
+                                        <p className="font-semibold text-slate-700">
+                                            {ticketStatusLabels[
+                                                item.status_baru ?? ""
+                                            ] ?? "Catatan"}
+                                        </p>
+                                        <p className="text-slate-600">
+                                            {item.catatan}
+                                        </p>
+                                        <p className="text-xs text-slate-400">
+                                            {item.tanggal?.slice(0, 10)} ·{" "}
+                                            {item.user?.nama ?? "Pengguna"}
+                                        </p>
+                                        {item.bukti_file && (
+                                            <a
+                                                href={route(
+                                                    "tiket.evidence",
+                                                    item.id,
+                                                )}
+                                                className="text-sm text-blue-700 hover:underline"
+                                            >
+                                                Unduh bukti penanganan
+                                            </a>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
+                    ) : (
+                        <Card className="flex h-64 flex-col items-center justify-center p-12 text-center">
+                            <Ticket
+                                size={32}
+                                className="mb-3 text-slate-400"
+                            />
+                            <p className="font-semibold text-slate-600">
+                                Pilih tiket untuk ditinjau
+                            </p>
+                        </Card>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function VendorTicketUpdate({
+    tickets,
+    onChanged,
+}: {
+    tickets: VendorTicketRecord[];
+    onChanged: (ticket: VendorTicketRecord) => void;
+}) {
+    const actionableTickets = tickets.filter(
+        (ticket) => ticket.status === "proses",
+    );
+    const [selectedId, setSelectedId] = useState<number | null>(
+        actionableTickets[0]?.id ?? null,
+    );
+    const [note, setNote] = useState("");
+    const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+    const [error, setError] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [done, setDone] = useState(false);
+    const selected =
+        actionableTickets.find((ticket) => ticket.id === selectedId) ?? null;
+
+    const submitUpdate = async () => {
+        if (!selected || !note.trim() || !evidenceFile) return;
+        setSaving(true);
+        setError("");
+        setDone(false);
+        const payload = new FormData();
+        payload.append("status", "menunggu_verifikasi");
+        payload.append("catatan", note);
+        payload.append("bukti_file", evidenceFile);
+        try {
+            const response = await axios.post(
+                route("vendor.tiket.status", { tiket: selected.id }),
+                payload,
+                { headers: { Accept: "application/json" } },
+            );
+            onChanged(response.data.ticket);
+            setNote("");
+            setEvidenceFile(null);
+            setDone(true);
+        } catch (requestError) {
+            setError(
+                axios.isAxiosError(requestError)
+                    ? requestError.response?.data?.errors?.bukti_file?.[0] ??
+                          requestError.response?.data?.message ??
+                          "Update penanganan gagal disimpan."
+                    : "Terjadi kesalahan saat mengirim update.",
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div>
+            <PageHeader
+                title="Update Penanganan Tiket"
+                sub="Catat perkembangan dan kirim hasil penanganan beserta bukti untuk diverifikasi Admin"
+            />
+            {error && (
+                <div className="mb-4">
+                    <InfoBox type="error">{error}</InfoBox>
+                </div>
+            )}
+            {done && (
+                <div className="mb-4">
+                    <InfoBox type="success">
+                        Hasil penanganan dan bukti berhasil dikirim ke Admin.
+                    </InfoBox>
+                </div>
+            )}
+            <div className="max-w-2xl space-y-5">
+                <Card className="space-y-2 p-5">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Pilih Tiket yang Sedang Ditangani
+                    </p>
+                    {actionableTickets.map((ticket) => (
+                        <label
+                            key={ticket.id}
+                            className={clx(
+                                "flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3",
+                                selectedId === ticket.id
+                                    ? "border-blue-500 bg-blue-50"
+                                    : "border-slate-200",
+                            )}
+                        >
+                            <input
+                                type="radio"
+                                name="vendor-ticket"
+                                checked={selectedId === ticket.id}
+                                onChange={() => {
+                                    setSelectedId(ticket.id);
+                                    setNote("");
+                                    setEvidenceFile(null);
+                                    setError("");
+                                    setDone(false);
+                                }}
+                            />
+                            <span className="flex-1 text-sm font-semibold text-slate-700">
+                                {ticket.nomor_tiket} ·{" "}
+                                {getProfilingIssueLabel(
+                                    ticket.kendala ?? { jenis_kendala: "" },
+                                )}
+                            </span>
+                            {statusBadge("Proses")}
+                        </label>
+                    ))}
+                    {actionableTickets.length === 0 && (
+                        <p className="py-5 text-center text-sm text-slate-500">
+                            Tidak ada tiket yang sedang dalam proses.
+                        </p>
+                    )}
+                </Card>
+                {selected && (
+                    <Card className="space-y-5 p-5 sm:p-7">
+                        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                            <p className="font-bold text-blue-800">
+                                {selected.nomor_tiket} ·{" "}
+                                {getProfilingIssueLabel(
+                                    selected.kendala ?? {
+                                        jenis_kendala: "",
+                                    },
+                                )}
+                            </p>
+                            <p className="text-sm text-blue-600">
+                                {selected.kendala?.profiling?.opd?.nama_opd ??
+                                    "OPD"}
+                            </p>
+                        </div>
+                        <FTextarea
+                            label="Catatan Perkembangan / Hasil Penanganan"
+                            required
+                            rows={5}
+                            value={note}
+                            onChange={setNote}
+                            placeholder="Jelaskan langkah penanganan dan hasilnya."
+                        />
+                        <div className="space-y-3 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-5">
+                            <InfoBox type="warn">
+                                Bukti JPG, PNG, atau PDF maksimal 5 MB wajib
+                                diunggah untuk mengirim hasil penanganan.
+                            </InfoBox>
+                            <input
+                                type="file"
+                                accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                                onChange={(event) => {
+                                    const file =
+                                        event.target.files?.[0] ?? null;
+                                    if (!file) return;
+                                    if (
+                                        !/\.(jpe?g|png|pdf)$/i.test(file.name) ||
+                                        file.size > 5 * 1024 * 1024
+                                    ) {
+                                        setError(
+                                            "Pilih file JPG, PNG, atau PDF maksimal 5 MB.",
+                                        );
+                                        setEvidenceFile(null);
+                                        event.target.value = "";
+                                        return;
+                                    }
+                                    setError("");
+                                    setEvidenceFile(file);
+                                }}
+                            />
+                            {evidenceFile && (
+                                <p className="text-sm text-emerald-700">
+                                    Bukti terpilih: {evidenceFile.name}
+                                </p>
+                            )}
+                        </div>
+                        <Btn
+                            disabled={saving || !note.trim() || !evidenceFile}
+                            onClick={submitUpdate}
+                        >
+                            <Upload size={15} />{" "}
+                            {saving ? "Mengirim..." : "Kirim ke Verifikasi Admin"}
+                        </Btn>
+                    </Card>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ─── Verifikasi Penanganan ────────────────────────────────────────────────────
 function VerifikasiPenanganan() {
     const [ticketOverrides, setTicketOverrides] = useState<
@@ -7518,16 +8590,20 @@ export default function App({
     role: authenticatedRole,
     userName: authenticatedName,
     opdName: authenticatedOpdName,
+    vendorName: authenticatedVendorName,
     opds: initialOpds = [],
     vendors: initialVendors = [],
+    users: initialUsers = [],
     profilings: initialProfilings = [],
     tickets: initialTickets = [],
 }: {
     role?: Role;
     userName?: string;
     opdName?: string | null;
+    vendorName?: string | null;
     opds?: OpdDashboardRecord[];
-    vendors?: Array<{ id: number; nama_vendor: string }>;
+    vendors?: VendorDashboardRecord[];
+    users?: UserDashboardRecord[];
     profilings?: ProfilingRecord[];
     tickets?: any[];
 }) {
@@ -7544,6 +8620,8 @@ export default function App({
     const [userName, setUserName] = useState(authenticatedName ?? "");
     const [logoutError, setLogoutError] = useState("");
     const [databaseOpds, setDatabaseOpds] = useState(initialOpds);
+    const [databaseVendors, setDatabaseVendors] = useState(initialVendors);
+    const [databaseUsers, setDatabaseUsers] = useState(initialUsers);
     const [databaseProfilings, setDatabaseProfilings] =
         useState(initialProfilings);
     const [databaseTickets, setDatabaseTickets] = useState(initialTickets);
@@ -7618,7 +8696,14 @@ export default function App({
                     />
                 );
             case "master-user":
-                return <MasterUser />;
+                return (
+                    <MasterUser
+                        users={databaseUsers}
+                        opds={databaseOpds}
+                        vendors={databaseVendors}
+                        onChanged={setDatabaseUsers}
+                    />
+                );
             case "form-profiling":
                 return null;
             case "riwayat-profiling":
@@ -7656,7 +8741,18 @@ export default function App({
                 return (
                     <KelolaTicket
                         tickets={databaseTickets}
-                        vendors={initialVendors}
+                        vendors={databaseVendors}
+                        onVendorCreated={(vendor) =>
+                            setDatabaseVendors((current) =>
+                                current.some((item) => item.id === vendor.id)
+                                    ? current
+                                    : [...current, vendor].sort((a, b) =>
+                                          a.nama_vendor.localeCompare(
+                                              b.nama_vendor,
+                                          ),
+                                      ),
+                            )
+                        }
                         onChanged={(ticket) =>
                             setDatabaseTickets((current) =>
                                 current.map((item) =>
@@ -7667,7 +8763,18 @@ export default function App({
                     />
                 );
             case "verifikasi-penanganan":
-                return <VerifikasiPenanganan />;
+                return (
+                    <DatabaseHandlingReview
+                        tickets={databaseTickets}
+                        onChanged={(ticket) =>
+                            setDatabaseTickets((current) =>
+                                current.map((item) =>
+                                    item.id === ticket.id ? ticket : item,
+                                ),
+                            )
+                        }
+                    />
+                );
             case "laporan":
                 return <Laporan />;
             case "dashboard-opd":
@@ -7724,11 +8831,40 @@ export default function App({
             case "pantau-tiket":
                 return <PantauTiket tickets={databaseTickets} />;
             case "dashboard-vendor":
-                return <DashboardVendor onNav={setScreen} />;
+                return (
+                    <DashboardVendor
+                        onNav={setScreen}
+                        tickets={databaseTickets}
+                        vendorName={authenticatedVendorName ?? "Vendor"}
+                    />
+                );
             case "tiket-masuk":
-                return <TiketMasuk />;
+                return (
+                    <VendorTicketInbox
+                        tickets={databaseTickets}
+                        onNav={setScreen}
+                        onChanged={(ticket) =>
+                            setDatabaseTickets((current) =>
+                                current.map((item) =>
+                                    item.id === ticket.id ? ticket : item,
+                                ),
+                            )
+                        }
+                    />
+                );
             case "update-penanganan":
-                return <UpdatePenanganan />;
+                return (
+                    <VendorTicketUpdate
+                        tickets={databaseTickets}
+                        onChanged={(ticket) =>
+                            setDatabaseTickets((current) =>
+                                current.map((item) =>
+                                    item.id === ticket.id ? ticket : item,
+                                ),
+                            )
+                        }
+                    />
+                );
             default:
                 return null;
         }

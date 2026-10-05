@@ -40,6 +40,7 @@ class DataProfilingController extends Controller
         );
         if (Auth::user()->role === 'opd') {
             $data['opd_id'] = Auth::user()->opd_id;
+            $this->ensureCurrentOpdPeriod($data['periode']);
         }
 
         $existing = DataProfiling::where('opd_id', $data['opd_id'])
@@ -89,6 +90,16 @@ class DataProfilingController extends Controller
             'Profiling yang sudah diajukan tidak dapat diubah kecuali dikembalikan oleh Admin.',
         );
         $data = $this->validated($request);
+        abort_if(
+            Auth::user()->role === 'opd' && $profiling->periode > now()->format('Y-m'),
+            422,
+            'Profiling untuk bulan mendatang belum dapat diubah.',
+        );
+        abort_unless(
+            $data['periode'] === $profiling->periode,
+            422,
+            'Periode profiling yang sudah dibuat tidak dapat diubah.',
+        );
         unset($data['opd_id']);
         DB::transaction(function () use ($profiling, $data, $request) {
             $profiling->update($data + ['status_verifikasi' => 'draft']);
@@ -143,7 +154,7 @@ class DataProfilingController extends Controller
     {
         return $request->validate([
             'opd_id' => ['nullable', 'exists:opd,id'],
-            'periode' => ['required', 'string', 'max:50'],
+            'periode' => ['required', 'date_format:Y-m'],
             'jumlah_device' => ['required', 'integer', 'min:0'],
             'kesimpulan' => ['nullable', 'string'],
             'nama_isp' => ['nullable', 'string', 'max:100'],
@@ -155,6 +166,16 @@ class DataProfilingController extends Controller
             'kendala.*.deskripsi' => ['nullable', 'string', 'max:10000'],
         ]);
     }
+
+    private function ensureCurrentOpdPeriod(string $period): void
+    {
+        abort_if(
+            Auth::user()->role === 'opd' && $period !== now()->format('Y-m'),
+            422,
+            'Profiling baru hanya dapat dibuat untuk bulan berjalan. Satu OPD hanya dapat memiliki satu profiling setiap bulan.',
+        );
+    }
+
     private function saveChildren(DataProfiling $profiling, Request $request): void
     {
         foreach ($request->input('aplikasi', []) as $nama) if (filled($nama)) AplikasiDigunakan::create(['data_profiling_id' => $profiling->id, 'nama_aplikasi' => $nama]);
