@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { Form, Link } from "@inertiajs/react";
 export default function FormPage({ profiling, opds }: any) {
     const edit = Boolean(profiling?.id);
+    const [issueType, setIssueType] = useState(
+        profiling?.kendala?.[0]?.nama_kendala ? "lainnya" : "",
+    );
     return (
         <div className="min-h-screen bg-gray-50 p-6">
             <div className="mx-auto max-w-2xl rounded bg-white p-6 shadow">
@@ -75,7 +79,8 @@ export default function FormPage({ profiling, opds }: any) {
                     </select>
                     <select
                         name="kendala[0][jenis_kendala]"
-                        defaultValue=""
+                        value={issueType}
+                        onChange={(event) => setIssueType(event.target.value)}
                         className="rounded border p-2"
                     >
                         <option value="">Tidak ada kendala</option>
@@ -85,7 +90,18 @@ export default function FormPage({ profiling, opds }: any) {
                         <option value="device">Device</option>
                         <option value="topologi">Topologi</option>
                         <option value="sosialisasi">Sosialisasi</option>
+                        <option value="lainnya">Lainnya</option>
                     </select>
+                    {issueType === "lainnya" && (
+                        <input
+                            name="kendala[0][nama_kendala]"
+                            required
+                            maxLength={150}
+                            placeholder="Sebutkan kendala lainnya"
+                            defaultValue={profiling?.kendala?.[0]?.nama_kendala ?? ""}
+                            className="rounded border p-2"
+                        />
+                    )}
                     <textarea
                         name="kesimpulan"
                         placeholder="Kesimpulan"

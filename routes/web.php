@@ -20,7 +20,7 @@ Route::get('/', function () {
 // Fallback Dashboard Bawaan (Opsional)
 Route::get('/dashboard', function () {
     return app(DashboardController::class)->__invoke(request());
-})->middleware(['auth', 'verified'])->name('dashboard');
+})->middleware('auth')->name('dashboard');
 
 // Route yang Membutuhkan Login (Auth)
 Route::middleware('auth')->group(function () {

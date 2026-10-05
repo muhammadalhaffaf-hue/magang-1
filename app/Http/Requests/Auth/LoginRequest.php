@@ -50,6 +50,14 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        if (Auth::user()->status !== 'aktif') {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'email' => 'Akun Anda dinonaktifkan. Hubungi Administrator Diskominfo.',
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 

@@ -44,7 +44,7 @@ class UserController extends Controller
     }
     private function validated(Request $request, ?User $user = null): array
     {
-        $data = $request->validate(['nama' => ['required', 'string', 'max:150'], 'email' => ['required', 'email', 'max:150', 'unique:users,email,' . ($user?->id ?? 'NULL')], 'role' => ['required', 'in:admin,opd,pihak_ketiga'], 'opd_id' => ['nullable', 'exists:opd,id'], 'pihak_ketiga_id' => ['nullable', 'exists:pihak_ketiga,id'], 'status' => ['required', 'in:aktif,nonaktif'], 'password' => [$user ? 'nullable' : 'required', 'string', 'min:8']]);
+        $data = $request->validate(['nama' => ['required', 'string', 'max:150'], 'email' => ['required', 'email', 'max:150', 'unique:users,email,' . ($user?->id ?? 'NULL')], 'role' => ['required', 'in:admin,opd,pihak_ketiga'], 'opd_id' => ['nullable', 'required_if:role,opd', 'exists:opd,id'], 'pihak_ketiga_id' => ['nullable', 'required_if:role,pihak_ketiga', 'exists:pihak_ketiga,id'], 'status' => ['required', 'in:aktif,nonaktif'], 'password' => [$user ? 'nullable' : 'required', 'string', 'min:8']]);
         if ($data['role'] === 'opd') {
             $data['pihak_ketiga_id'] = null;
         } elseif ($data['role'] === 'pihak_ketiga') {

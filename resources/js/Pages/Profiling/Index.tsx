@@ -25,15 +25,25 @@ export default function Index({ profilings, role }: any) {
                         </tr>
                     </thead>
                     <tbody>
-                        {profilings.data.map((item: any) => (
-                            <tr key={item.id} className="border-t">
-                                <td className="p-2">{item.opd?.nama_opd}</td>
-                                <td className="p-2">{item.periode}</td>
-                                <td className="p-2">{item.jumlah_device}</td>
-                                <td className="p-2">
-                                    {item.status_verifikasi}
+                        {profilings.data.length === 0 ? (
+                            <tr>
+                                <td
+                                    colSpan={5}
+                                    className="p-4 text-center text-gray-500"
+                                >
+                                    Belum ada data profiling.
                                 </td>
-                                <td className="p-2">
+                            </tr>
+                        ) : (
+                            profilings.data.map((item: any) => (
+                                <tr key={item.id} className="border-t">
+                                    <td className="p-2">{item.opd?.nama_opd}</td>
+                                    <td className="p-2">{item.periode}</td>
+                                    <td className="p-2">{item.jumlah_device}</td>
+                                    <td className="p-2">
+                                        {item.status_verifikasi}
+                                    </td>
+                                    <td className="p-2">
                                     {role === "opd" &&
                                     item.status_verifikasi !==
                                         "diverifikasi" ? (
@@ -104,9 +114,10 @@ export default function Index({ profilings, role }: any) {
                                             </button>
                                         </>
                                     ) : null}
-                                </td>
-                            </tr>
-                        ))}
+                                    </td>
+                                </tr>
+                            ))
+                        )}
                     </tbody>
                 </table>
             </div>

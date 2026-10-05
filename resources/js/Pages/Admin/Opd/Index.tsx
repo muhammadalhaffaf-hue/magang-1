@@ -59,9 +59,76 @@ import {
     Legend,
 } from "recharts";
 import { GridBackground } from "../../../Components/GridBackground";
+import axios from "axios";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Role = "admin" | "opd" | "vendor";
+type OpdDashboardRecord = {
+    id: number;
+    nama_opd: string;
+    alamat?: string | null;
+    jumlah_pegawai?: number;
+    koneksi_internet?: Array<{
+        nama_isp: string;
+        bandwidth_mbps: string | number;
+        status: string;
+    }>;
+    data_profiling?: Array<{
+        periode: string;
+        status_verifikasi: string;
+    }>;
+};
+type ProfilingRecord = {
+    id: number;
+    opd_id?: number;
+    periode: string;
+    status_verifikasi: string;
+    jumlah_device: number;
+    created_at?: string;
+    kesimpulan?: string | null;
+    tanggal_diajukan?: string | null;
+    tanggal_diverifikasi?: string | null;
+    opd?: {
+        nama_opd: string;
+        koneksi_internet?: Array<{
+            nama_isp: string;
+            bandwidth_mbps: string | number;
+            status: string;
+        }>;
+    } | null;
+    aplikasi?: Array<{ nama_aplikasi: string }>;
+    speed_test?: {
+        kecepatan_unduh: string | number;
+        kecepatan_unggah: string | number | null;
+        ping_ms: string | number | null;
+        hasil: string;
+        tanggal_test?: string;
+    } | null;
+    kendala?: Array<{
+        id: number;
+        jenis_kendala: string;
+        nama_kendala?: string | null;
+        deskripsi?: string | null;
+        tiket?: {
+            id: number;
+            nomor_tiket: string;
+            status: string;
+        } | null;
+    }>;
+};
+const profilingIssueLabels: Record<string, string> = {
+    bandwidth_kurang: "Speed Lambat",
+    device: "Perangkat Rusak",
+    topologi: "Konfigurasi Salah",
+    sosialisasi: "Gangguan ISP",
+};
+const getProfilingIssueLabel = (issue: {
+    jenis_kendala: string;
+    nama_kendala?: string | null;
+}) =>
+    issue.nama_kendala?.trim() ||
+    profilingIssueLabels[issue.jenis_kendala] ||
+    issue.jenis_kendala;
 type Screen =
     | "login"
     | "dashboard-admin"
@@ -301,6 +368,39 @@ const profilingQueue = [
         catatan: "VLAN tidak terkonfigurasi setelah penambahan ruangan.",
     },
 ];
+type ProfilingQueueItem = (typeof profilingQueue)[number];
+
+function toProfilingQueueItem(profiling: ProfilingRecord): ProfilingQueueItem {
+    const connection = profiling.opd?.koneksi_internet?.find(
+        (item) => item.status === "aktif",
+    );
+    const speedTest = profiling.speed_test;
+    return {
+        id: profiling.id,
+        opd: profiling.opd?.nama_opd ?? "OPD",
+        diajukan: (profiling.tanggal_diajukan ?? `${profiling.periode}-01`).slice(
+            0,
+            10,
+        ),
+        bandwidth: `${connection?.bandwidth_mbps ?? 0} Mbps`,
+        device: profiling.jumlah_device,
+        status: "Diajukan",
+        dl: Number(speedTest?.kecepatan_unduh ?? 0),
+        ul: Number(speedTest?.kecepatan_unggah ?? 0),
+        ping:
+            speedTest?.ping_ms == null
+                ? "-"
+                : Number(speedTest.ping_ms),
+        isp: connection?.nama_isp ?? "-",
+        kondisi: speedTest?.hasil === "sesuai" ? "Baik" : "Sedang",
+        apps: (profiling.aplikasi ?? []).map((app) => app.nama_aplikasi),
+        kendala: (profiling.kendala ?? []).map(getProfilingIssueLabel),
+        catatan:
+            profiling.kesimpulan ??
+            profiling.kendala?.map((item) => item.deskripsi).filter(Boolean).join("; ") ??
+            "-",
+    };
+}
 const ticketList = [
     {
         id: "TKT-001",
@@ -491,6 +591,7 @@ const statusBadge = (s: string) => {
     const m: Record<string, string> = {
         Diverifikasi: "green",
         Diajukan: "blue",
+        Dikembalikan: "red",
         Draft: "gray",
         Belum: "gray",
         Baru: "sky",
@@ -668,6 +769,7 @@ const FInput = ({
     error,
     required,
     hint,
+    readOnly = false,
     className = "",
 }: {
     label?: string;
@@ -678,6 +780,7 @@ const FInput = ({
     error?: string;
     required?: boolean;
     hint?: string;
+    readOnly?: boolean;
     className?: string;
 }) => (
     <div className="relative">
@@ -692,12 +795,14 @@ const FInput = ({
             type={type}
             placeholder={placeholder}
             value={value}
+            readOnly={readOnly}
             onChange={(e) => onChange?.(e.target.value)}
             className={clx(
                 "w-full px-4 py-2.5 text-sm rounded-xl border bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all",
                 error
                     ? "border-red-400 bg-red-50"
                     : "border-slate-200 hover:border-slate-300",
+                readOnly && "bg-slate-50 cursor-not-allowed",
                 className,
             )}
         />
@@ -1255,44 +1360,14 @@ function createCaptcha() {
     };
 }
 
-function Login({ onLogin }: { onLogin: (role: Role, name: string) => void }) {
+function Login() {
     const [email, setEmail] = useState("");
     const [pw, setPw] = useState("");
     const [err, setErr] = useState("");
     const [loading, setLoading] = useState(false);
     const [captcha, setCaptcha] = useState(createCaptcha);
     const [captchaAnswer, setCaptchaAnswer] = useState("");
-    const users = [
-        {
-            email: "admin@diskominfo.go.id",
-            pw: "admin123",
-            role: "admin" as Role,
-            name: "Budi Santoso",
-            active: true,
-        },
-        {
-            email: "opd@dikbud.go.id",
-            pw: "opd123",
-            role: "opd" as Role,
-            name: "Siti Rahayu",
-            active: true,
-        },
-        {
-            email: "vendor@jaringan.id",
-            pw: "vendor123",
-            role: "vendor" as Role,
-            name: "CV Jaringan Sejahtera",
-            active: true,
-        },
-        {
-            email: "nonaktif@test.id",
-            pw: "test",
-            role: "opd" as Role,
-            name: "Test User",
-            active: false,
-        },
-    ];
-    const submit = () => {
+    const submit = async () => {
         setErr("");
         if (captchaAnswer.trim() !== captcha.code) {
             setErr("Jawaban CAPTCHA belum benar. Silakan coba lagi.");
@@ -1302,19 +1377,31 @@ function Login({ onLogin }: { onLogin: (role: Role, name: string) => void }) {
         }
 
         setLoading(true);
-        setTimeout(() => {
-            const u = users.find((u) => u.email === email && u.pw === pw);
-            if (!u)
+        try {
+            const response = await axios.post<{
+                role: "admin" | "opd" | "pihak_ketiga";
+                name: string;
+                dashboard_url: string;
+            }>(
+                route("login"),
+                { email, password: pw },
+                { headers: { Accept: "application/json" } },
+            );
+            window.location.assign(response.data.dashboard_url);
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                const errors = error.response?.data?.errors;
                 setErr(
-                    "Email atau kata sandi tidak sesuai. Periksa kembali dan coba lagi.",
+                    errors?.email?.[0] ??
+                        error.response?.data?.message ??
+                        "Tidak dapat terhubung ke server. Silakan coba lagi.",
                 );
-            else if (!u.active)
-                setErr(
-                    "Akun Anda dinonaktifkan. Hubungi Administrator Diskominfo untuk bantuan.",
-                );
-            else onLogin(u.role, u.name);
+            } else {
+                setErr("Terjadi kesalahan saat masuk. Silakan coba lagi.");
+            }
+        } finally {
             setLoading(false);
-        }, 700);
+        }
     };
     return (
         <div className="relative min-h-screen bg-transparent flex flex-col lg:flex-row">
@@ -1658,35 +1745,98 @@ function CommandPalette({ onNav }: { onNav: (screen: Screen) => void }) {
     );
 }
 
-function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
-    const [sector, setSector] = useState("Semua sektor");
-    const opdHealth = [
-        {
-            name: "Dinas Kesehatan",
-            sector: "Pelayanan Publik",
-            health: "98.5%",
-            status: "Normal",
-            latency: "22 ms",
-        },
-        {
-            name: "Dinas Pendidikan",
-            sector: "Sekolah / Pendidikan",
-            health: "96.8%",
-            status: "Normal",
-            latency: "28 ms",
-        },
-        {
-            name: "Dinas PUPR",
-            sector: "Pelayanan Publik",
-            health: "84.2%",
-            status: "High latency",
-            latency: "115 ms",
-        },
-    ];
-    const filtered =
-        sector === "Semua sektor"
-            ? opdHealth
-            : opdHealth.filter((opd) => opd.sector === sector);
+function NocOverview({
+    onNav,
+    opds,
+    profilings,
+    tickets,
+}: {
+    onNav: (screen: Screen) => void;
+    opds: OpdDashboardRecord[];
+    profilings: ProfilingRecord[];
+    tickets: Array<{
+        id: string;
+        opd: string;
+        kendala: string;
+        status: string;
+        tanggal: string;
+    }>;
+}) {
+    const [healthFilter, setHealthFilter] = useState("Semua OPD");
+    const latestProfilingByOpd = new Map<number, ProfilingRecord>();
+    for (const profiling of profilings) {
+        if (profiling.opd_id == null) continue;
+        const current = latestProfilingByOpd.get(profiling.opd_id);
+        if (!current || profiling.periode > current.periode) {
+            latestProfilingByOpd.set(profiling.opd_id, profiling);
+        }
+    }
+    const latestProfilings = [...latestProfilingByOpd.values()];
+    const measuredProfilings = latestProfilings.filter(
+        (profiling) => profiling.speed_test,
+    );
+    const suitableCount = measuredProfilings.filter(
+        (profiling) => profiling.speed_test?.hasil === "sesuai",
+    ).length;
+    const suitablePercent = measuredProfilings.length
+        ? Math.round((suitableCount / measuredProfilings.length) * 100)
+        : null;
+    const pingValues = latestProfilings
+        .map((profiling) => Number(profiling.speed_test?.ping_ms))
+        .filter((ping) => Number.isFinite(ping) && ping >= 0);
+    const averagePing = pingValues.length
+        ? Math.round(pingValues.reduce((sum, ping) => sum + ping, 0) / pingValues.length)
+        : null;
+    const totalDevices = latestProfilings.reduce(
+        (sum, profiling) => sum + profiling.jumlah_device,
+        0,
+    );
+    const activeConnections = opds.flatMap((opd) =>
+        (opd.koneksi_internet ?? []).filter(
+            (connection) => connection.status === "aktif",
+        ),
+    );
+    const totalBandwidthMbps = activeConnections.reduce(
+        (sum, connection) => sum + Number(connection.bandwidth_mbps),
+        0,
+    );
+    const connectedOpdCount = opds.filter((opd) =>
+        opd.koneksi_internet?.some(
+            (connection) => connection.status === "aktif",
+        ),
+    ).length;
+    const opdHealth = opds.map((opd) => {
+        const profiling = latestProfilingByOpd.get(opd.id);
+        const result = profiling?.speed_test?.hasil;
+        return {
+            name: opd.nama_opd,
+            status:
+                result === "sesuai"
+                    ? "Sesuai"
+                    : result === "tidak_sesuai"
+                      ? "Tidak sesuai"
+                      : "Belum ada data",
+            health:
+                result === "sesuai"
+                    ? "Sesuai"
+                    : result === "tidak_sesuai"
+                      ? "Tidak sesuai"
+                      : "—",
+            latency:
+                profiling?.speed_test?.ping_ms == null
+                    ? "Ping belum dicatat"
+                    : `Ping ${profiling.speed_test.ping_ms} ms`,
+        };
+    });
+    const filtered = opdHealth.filter(
+        (opd) =>
+            healthFilter === "Semua OPD" || opd.status === healthFilter,
+    );
+    const activeTickets = tickets.filter((ticket) =>
+        ["Baru", "Diteruskan", "Proses", "Menunggu Verifikasi"].includes(
+            ticket.status,
+        ),
+    );
     return (
         <>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -1696,33 +1846,45 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
                             <div className="mb-1 flex items-center gap-2">
                                 <Activity size={17} className="text-blue-600" />
                                 <h3 className="text-sm font-bold text-slate-800">
-                                    Network Health Index
+                                    Hasil Speed Test
                                 </h3>
                             </div>
                             <p className="text-xs text-slate-400">
-                                Rata-rata latency, packet loss, dan uptime 30
-                                hari
+                                Persentase profiling terbaru dengan hasil sesuai
                             </p>
                         </div>
                         <span className="text-3xl font-extrabold text-blue-700">
-                            96.4%
+                            {suitablePercent == null
+                                ? "—"
+                                : `${suitablePercent}%`}
                         </span>
                     </div>
                     <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full w-[96.4%] rounded-full bg-blue-600" />
+                        <div
+                            className="h-full rounded-full bg-blue-600"
+                            style={{ width: `${suitablePercent ?? 0}%` }}
+                        />
                     </div>
                     <div className="mt-4 grid grid-cols-3 gap-3 text-xs">
                         <div>
-                            <p className="text-slate-400">Uptime</p>
-                            <p className="font-bold text-slate-800">99.1%</p>
+                            <p className="text-slate-400">Profiling terbaru</p>
+                            <p className="font-bold text-slate-800">
+                                {latestProfilings.length}
+                            </p>
                         </div>
                         <div>
-                            <p className="text-slate-400">Packet loss</p>
-                            <p className="font-bold text-slate-800">0.08%</p>
+                            <p className="text-slate-400">Hasil sesuai</p>
+                            <p className="font-bold text-slate-800">
+                                {measuredProfilings.length
+                                    ? `${suitableCount}/${measuredProfilings.length}`
+                                    : "—"}
+                            </p>
                         </div>
                         <div>
-                            <p className="text-slate-400">Latency rata-rata</p>
-                            <p className="font-bold text-slate-800">34 ms</p>
+                            <p className="text-slate-400">Rata-rata Ping</p>
+                            <p className="font-bold text-slate-800">
+                                {averagePing == null ? "—" : `${averagePing} ms`}
+                            </p>
                         </div>
                     </div>
                 </Card>
@@ -1734,16 +1896,31 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
                         </h3>
                     </div>
                     <p className="mt-3 text-3xl font-extrabold text-slate-900">
-                        1.28{" "}
+                        {(totalBandwidthMbps / 1000).toFixed(2)}{" "}
                         <span className="text-base font-semibold text-slate-400">
                             Gbps
                         </span>
                     </p>
                     <div className="mt-3 h-2 rounded-full bg-slate-100">
-                        <div className="h-full w-[68%] rounded-full bg-indigo-500" />
+                        <div
+                            className="h-full rounded-full bg-indigo-500"
+                            style={{
+                                width: `${
+                                    totalBandwidthMbps
+                                        ? Math.min(
+                                              100,
+                                              (activeConnections.length /
+                                                  Math.max(opds.length, 1)) *
+                                                  100,
+                                          )
+                                        : 0
+                                }%`,
+                            }}
+                        />
                     </div>
                     <p className="mt-2 text-xs text-slate-400">
-                        68% terpakai dari kapasitas 1.88 Gbps
+                        Total kapasitas dari {activeConnections.length} koneksi
+                        aktif
                     </p>
                 </Card>
             </div>
@@ -1755,27 +1932,27 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
                                 Health OPD dan status link
                             </h3>
                             <p className="text-xs text-slate-400">
-                                Klik OPD untuk membuka profil dan inventaris
-                                aset
+                                Hasil speed test dari profiling terbaru tiap OPD
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
                             {[
-                                "Semua sektor",
-                                "Pelayanan Publik",
-                                "Sekolah / Pendidikan",
+                                "Semua OPD",
+                                "Sesuai",
+                                "Tidak sesuai",
+                                "Belum ada data",
                             ].map((item) => (
                                 <button
                                     key={item}
-                                    onClick={() => setSector(item)}
-                                    className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold ${sector === item ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}
+                                    onClick={() => setHealthFilter(item)}
+                                    className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold ${healthFilter === item ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}
                                 >
                                     {item}
                                 </button>
                             ))}
                         </div>
                     </div>
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
                         {filtered.map((opd) => (
                             <button
                                 key={opd.name}
@@ -1784,14 +1961,14 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
                             >
                                 <span className="flex items-center gap-3">
                                     <span
-                                        className={`h-2.5 w-2.5 rounded-full ${opd.status === "Normal" ? "bg-emerald-500" : "bg-amber-400"}`}
+                                        className={`h-2.5 w-2.5 rounded-full ${opd.status === "Sesuai" ? "bg-emerald-500" : opd.status === "Tidak sesuai" ? "bg-red-500" : "bg-slate-300"}`}
                                     />
                                     <span>
                                         <span className="block text-sm font-semibold text-slate-800">
                                             {opd.name}
                                         </span>
                                         <span className="text-xs text-slate-400">
-                                            {opd.sector} · {opd.latency}
+                                            {opd.status} · {opd.latency}
                                         </span>
                                     </span>
                                 </span>
@@ -1800,6 +1977,11 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
                                 </span>
                             </button>
                         ))}
+                        {filtered.length === 0 && (
+                            <p className="py-4 text-sm text-slate-400">
+                                Tidak ada OPD pada filter ini.
+                            </p>
+                        )}
                     </div>
                 </Card>
                 <Card className="p-5">
@@ -1810,28 +1992,24 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
                         </h3>
                     </div>
                     <div className="mt-4 space-y-4">
-                        <div className="flex gap-3">
-                            <span className="mt-1 h-2 w-2 rounded-full bg-red-500" />
-                            <div>
-                                <p className="text-sm font-semibold text-slate-800">
-                                    Link Dinas PUPR
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                    Latency di atas SLA · 115 ms
-                                </p>
+                        {activeTickets.slice(0, 3).map((ticket) => (
+                            <div key={ticket.id} className="flex gap-3">
+                                <span className="mt-1 h-2 w-2 rounded-full bg-amber-400" />
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-slate-800">
+                                        {ticket.id} · {ticket.opd}
+                                    </p>
+                                    <p className="text-xs text-slate-400">
+                                        {ticket.kendala} · {ticket.status}
+                                    </p>
+                                </div>
                             </div>
-                        </div>
-                        <div className="flex gap-3">
-                            <span className="mt-1 h-2 w-2 rounded-full bg-amber-400" />
-                            <div>
-                                <p className="text-sm font-semibold text-slate-800">
-                                    Kapasitas VLAN 20
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                    Pemakaian IP mencapai 82%
-                                </p>
-                            </div>
-                        </div>
+                        ))}
+                        {activeTickets.length === 0 && (
+                            <p className="text-sm text-slate-400">
+                                Tidak ada tiket aktif yang memerlukan tindakan.
+                            </p>
+                        )}
                     </div>
                     <button
                         onClick={() => onNav("kelola-tiket")}
@@ -1847,10 +2025,10 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
                         <Server size={19} className="text-blue-600" />
                         <div>
                             <p className="text-xs text-slate-400">
-                                Perangkat terpantau
+                                Perangkat dalam profiling terbaru
                             </p>
                             <p className="text-xl font-extrabold text-slate-800">
-                                248
+                                {totalDevices}
                             </p>
                         </div>
                     </div>
@@ -1860,10 +2038,13 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
                         <ShieldCheck size={19} className="text-emerald-600" />
                         <div>
                             <p className="text-xs text-slate-400">
-                                SLA vendor bulan ini
+                                SLA vendor
                             </p>
                             <p className="text-xl font-extrabold text-slate-800">
-                                99.2%
+                                —
+                            </p>
+                            <p className="text-xs text-slate-400">
+                                Data SLA belum tersedia
                             </p>
                         </div>
                     </div>
@@ -1873,10 +2054,10 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
                         <MapPinned size={19} className="text-indigo-600" />
                         <div>
                             <p className="text-xs text-slate-400">
-                                OPD aktif di peta GIS
+                                OPD dengan koneksi aktif
                             </p>
                             <p className="text-xl font-extrabold text-slate-800">
-                                32 / 32
+                                {connectedOpdCount} / {opds.length}
                             </p>
                         </div>
                     </div>
@@ -1887,7 +2068,17 @@ function NocOverview({ onNav }: { onNav: (screen: Screen) => void }) {
 }
 
 // ─── Dashboard Admin ──────────────────────────────────────────────────────────
-function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
+function DashboardAdmin({
+    onNav,
+    opds,
+    profilings,
+    tickets,
+}: {
+    onNav: (s: Screen) => void;
+    opds: OpdDashboardRecord[];
+    profilings: ProfilingRecord[];
+    tickets: any[];
+}) {
     const monthAbbreviations = [
         "Jan",
         "Feb",
@@ -1902,14 +2093,9 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
         "Nov",
         "Des",
     ];
-    const normalizeOpd = (name: string) =>
-        name === "Badan Kepegawaian Daerah"
-            ? "BKD"
-            : name === "Dinas Pendidikan dan Kebudayaan"
-              ? "Dinas Pendidikan"
-              : name;
     const getPeriod = (date: string) => {
-        const [yearValue, monthValue] = date.split("-").map(Number);
+        const [yearValue, monthValue] = date.slice(0, 7).split("-").map(Number);
+        if (!yearValue || !monthValue || monthValue > 12) return "";
         return `${monthAbbreviations[monthValue - 1]} ${yearValue}`;
     };
     const periodOrder = (value: string) => {
@@ -1918,72 +2104,112 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
     };
     const [opdFilter, setOpdFilter] = useState("Semua OPD");
     const [periodFilter, setPeriodFilter] = useState("Semua Periode");
-    const [resolvedProfilings] = useState<Record<number, string>>(() => {
-        try {
-            return JSON.parse(
-                localStorage.getItem("siprojar.adminResolvedProfilings") ?? "{}",
-            );
-        } catch {
-            return {};
-        }
+    const opdOptions = opds.map((opd) => opd.nama_opd);
+    const dashboardRows = profilings.map((profiling) => {
+        const connection = profiling.opd?.koneksi_internet?.find(
+            (item) => item.status === "aktif",
+        );
+        const speedTest = profiling.speed_test;
+        const periodParts = profiling.periode.split("-").map(Number);
+        const isSuitable = speedTest?.hasil === "sesuai";
+        const isUnsuitable = speedTest?.hasil === "tidak_sesuai";
+
+        return {
+            id: profiling.id,
+            opdId: profiling.opd_id,
+            opd: profiling.opd?.nama_opd ?? "OPD",
+            date: profiling.periode,
+            bandwidth: `${connection?.bandwidth_mbps ?? 0} Mbps`,
+            dl: Number(speedTest?.kecepatan_unduh ?? 0),
+            ul: Number(speedTest?.kecepatan_unggah ?? 0),
+            tiket: tickets.filter(
+                (ticket) =>
+                    ticket.kendala?.profiling?.id === profiling.id,
+            ).length,
+            profiling: profiling.status_verifikasi,
+            year: periodParts[0] ?? 0,
+            month: periodParts[1] ?? 0,
+            baik: isSuitable ? 100 : 0,
+            sedang: 0,
+            buruk: isUnsuitable ? 100 : 0,
+        };
     });
-    const opdOptions = Array.from(
-        new Set([
-            ...reportRows.map((row) => row.opd),
-            ...ticketList.map((ticket) => normalizeOpd(ticket.opd)),
-            ...profilingQueue.map((profiling) =>
-                normalizeOpd(profiling.opd),
-            ),
-        ]),
-    ).sort();
+    const dashboardTickets = tickets.map((ticket) => ({
+        id: ticket.nomor_tiket,
+        opd: ticket.kendala?.profiling?.opd?.nama_opd ?? "OPD",
+        kendala: getProfilingIssueLabel(
+            ticket.kendala ?? { jenis_kendala: "" },
+        ),
+        deskripsi: ticket.kendala?.deskripsi ?? "",
+        status: {
+            baru: "Baru",
+            diteruskan: "Diteruskan",
+            proses: "Proses",
+            menunggu_verifikasi: "Menunggu Verifikasi",
+            selesai: "Selesai",
+            ditolak: "Ditolak",
+        }[ticket.status] ?? ticket.status,
+        tanggal: ticket.created_at ?? "",
+        vendor: ticket.pihak_ketiga?.nama_vendor ?? null,
+        prioritas:
+            ticket.urgensi === "tinggi"
+                ? "Tinggi"
+                : ticket.urgensi === "rendah"
+                  ? "Rendah"
+                  : "Sedang",
+    }));
     const periodOptions = [
         "Semua Periode",
         ...Array.from(
             new Set([
-                ...reportRows.map(
-                    (row) =>
-                        `${monthAbbreviations[row.month - 1]} ${row.year}`,
-                ),
-                ...ticketList.map((ticket) => getPeriod(ticket.tanggal)),
-                ...profilingQueue.map((profiling) =>
-                    getPeriod(profiling.diajukan),
-                ),
+                ...profilings.map((profiling) => getPeriod(profiling.periode)),
+                ...dashboardTickets.map((ticket) => getPeriod(ticket.tanggal)),
             ]),
-        ).sort((left, right) => periodOrder(right) - periodOrder(left)),
+        )
+            .filter(Boolean)
+            .sort((left, right) => periodOrder(right) - periodOrder(left)),
     ];
-    const matchesOpd = (name: string) =>
-        opdFilter === "Semua OPD" || normalizeOpd(name) === opdFilter;
+    const matchesOpd = (name: string) => opdFilter === "Semua OPD" || name === opdFilter;
     const matchesPeriod = (date: string) =>
         periodFilter === "Semua Periode" || getPeriod(date) === periodFilter;
-    const filteredRows = reportRows.filter(
+    const filteredRows = dashboardRows.filter(
         (row) =>
             matchesOpd(row.opd) &&
-            (periodFilter === "Semua Periode" ||
-                `${monthAbbreviations[row.month - 1]} ${row.year}` ===
-                    periodFilter),
+            matchesPeriod(row.date),
     );
-    const filteredTickets = ticketList.filter(
+    const filteredTickets = dashboardTickets.filter(
         (ticket) => matchesOpd(ticket.opd) && matchesPeriod(ticket.tanggal),
     );
-    const filteredProfilings = profilingQueue.filter(
+    const filteredProfilings = profilings.filter(
         (profiling) =>
-            !resolvedProfilings[profiling.id] &&
-            matchesOpd(profiling.opd) &&
-            matchesPeriod(profiling.diajukan),
+            profiling.status_verifikasi === "diajukan" &&
+            matchesOpd(profiling.opd?.nama_opd ?? "") &&
+            matchesPeriod(profiling.periode),
+    ).map(toProfilingQueueItem);
+    const conditionCounts = filteredRows.reduce(
+        (counts, row) => {
+            const profiling = profilings.find((item) => item.id === row.id);
+            const result = profiling?.speed_test?.hasil;
+            if (result === "sesuai") counts.baik += 1;
+            if (result === "tidak_sesuai") counts.buruk += 1;
+            return counts;
+        },
+        { baik: 0, sedang: 0, buruk: 0 },
     );
+    const measuredConditions = conditionCounts.baik + conditionCounts.buruk;
     const conditionData = kondisiPie.map((condition) => {
         const key = condition.name.toLowerCase() as "baik" | "sedang" | "buruk";
-        const average = filteredRows.length
-            ? Math.round(
-                  filteredRows.reduce((total, row) => total + row[key], 0) /
-                      filteredRows.length,
-              )
-            : 0;
-        return { ...condition, value: average };
+        return {
+            ...condition,
+            value: measuredConditions
+                ? Math.round((conditionCounts[key] / measuredConditions) * 100)
+                : 0,
+        };
     });
     const ticketTrendData = periodOptions
         .slice(1)
         .reverse()
+        .slice(-6)
         .map((period) => {
             const ticketsInPeriod = filteredTickets.filter(
                 (ticket) => getPeriod(ticket.tanggal) === period,
@@ -1993,7 +2219,7 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                 baru: ticketsInPeriod.filter((ticket) => ticket.status === "Baru")
                     .length,
                 proses: ticketsInPeriod.filter((ticket) =>
-                    ["Proses", "Diteruskan"].includes(ticket.status),
+                    ["Proses", "Diteruskan", "Menunggu Verifikasi"].includes(ticket.status),
                 ).length,
                 selesai: ticketsInPeriod.filter(
                     (ticket) => ticket.status === "Selesai",
@@ -2004,23 +2230,25 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
             (row) =>
                 periodFilter === "Semua Periode" || row.bulan === periodFilter,
         );
+    const filteredOpdCount =
+        periodFilter === "Semua Periode"
+            ? opds.filter((opd) => matchesOpd(opd.nama_opd)).length
+            : new Set(filteredRows.map((row) => row.opdId)).size;
 
     return (
         <div className="space-y-6">
             <PageHeader
                 title="Dashboard"
-                sub="Rekap kondisi jaringan dan aktivitas sistem · 18 Sep 2026"
+                sub="Rekap kondisi jaringan dan aktivitas sistem dari data terdaftar"
                 action={
                     <>
                         <CommandPalette onNav={onNav} />
                         <FSelect
-                            label="OPD"
                             options={["Semua OPD", ...opdOptions]}
                             value={opdFilter}
                             onChange={setOpdFilter}
                         />
                         <FSelect
-                            label="Bulan / Tahun"
                             options={periodOptions}
                             value={periodFilter}
                             onChange={setPeriodFilter}
@@ -2028,24 +2256,29 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                     </>
                 }
             />
-            <NocOverview onNav={onNav} />
+            <NocOverview
+                onNav={onNav}
+                opds={opds}
+                profilings={profilings}
+                tickets={dashboardTickets}
+            />
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
                 <StatCard
                     label="Total OPD"
-                    value={new Set(filteredRows.map((row) => row.opd)).size}
+                    value={filteredOpdCount}
                     icon={<Building2 size={20} />}
                     color="blue"
                 />
                 <StatCard
                     label="Profiling Diajukan"
-                    value={filteredRows.filter((row) => row.profiling === "Diajukan").length}
+                    value={filteredRows.filter((row) => row.profiling === "diajukan").length}
                     icon={<ClipboardList size={20} />}
                     color="amber"
                     sub="Menunggu tinjau"
                 />
                 <StatCard
                     label="Profiling Diverifikasi"
-                    value={filteredRows.filter((row) => row.profiling === "Diverifikasi").length}
+                    value={filteredRows.filter((row) => row.profiling === "diverifikasi").length}
                     icon={<CheckCircle2 size={20} />}
                     color="green"
                     sub="Bulan ini"
@@ -2059,7 +2292,7 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
                 />
                 <StatCard
                     label="Tiket Proses"
-                    value={filteredTickets.filter((ticket) => ["Proses", "Diteruskan"].includes(ticket.status)).length}
+                    value={filteredTickets.filter((ticket) => ["Proses", "Diteruskan", "Menunggu Verifikasi"].includes(ticket.status)).length}
                     icon={<AlertTriangle size={20} />}
                     color="amber"
                 />
@@ -2311,7 +2544,13 @@ function DashboardAdmin({ onNav }: { onNav: (s: Screen) => void }) {
 }
 
 // ─── Master OPD ───────────────────────────────────────────────────────────────
-function MasterOPD() {
+function MasterOPD({
+    opds,
+    onChanged,
+}: {
+    opds: OpdDashboardRecord[];
+    onChanged: (opds: OpdDashboardRecord[]) => void;
+}) {
     type OpdRow = {
         id: number;
         nama: string;
@@ -2320,12 +2559,38 @@ function MasterOPD() {
         koneksi: number;
         profiling: string;
     };
-    const [data, setData] = useState<OpdRow[]>(opdList);
+    const mapOpd = (opd: OpdDashboardRecord): OpdRow => {
+        const latestProfiling = [...(opd.data_profiling ?? [])].sort(
+            (left, right) => right.periode.localeCompare(left.periode),
+        )[0];
+        const statusLabels: Record<string, string> = {
+            draft: "Draft",
+            diajukan: "Diajukan",
+            diverifikasi: "Diverifikasi",
+            dikembalikan: "Dikembalikan",
+        };
+        return {
+            id: opd.id,
+            nama: opd.nama_opd,
+            alamat: opd.alamat ?? "",
+            pegawai: opd.jumlah_pegawai ?? 0,
+            koneksi: (opd.koneksi_internet ?? []).filter(
+                (connection) => connection.status === "aktif",
+            ).length,
+            profiling: latestProfiling
+                ? statusLabels[latestProfiling.status_verifikasi] ??
+                  latestProfiling.status_verifikasi
+                : "Belum",
+        };
+    };
+    const [data, setData] = useState<OpdRow[]>(opds.map(mapOpd));
     const [search, setSearch] = useState("");
     const [modal, setModal] = useState<"add" | "edit" | "delete" | null>(null);
     const [editing, setEditing] = useState<OpdRow | null>(null);
     const [form, setForm] = useState({ nama: "", alamat: "", pegawai: "" });
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [requestError, setRequestError] = useState("");
+    const [saving, setSaving] = useState(false);
 
     const filtered = data.filter(
         (o) =>
@@ -2350,6 +2615,7 @@ function MasterOPD() {
     };
 
     const validate = () => {
+        setRequestError("");
         const e: Record<string, string> = {};
         if (!form.nama.trim()) e.nama = "Nama OPD wajib diisi";
         if (!form.alamat.trim()) e.alamat = "Alamat wajib diisi";
@@ -2362,38 +2628,77 @@ function MasterOPD() {
         setErrors(e);
         return Object.keys(e).length === 0;
     };
-    const save = () => {
+    const save = async () => {
         if (!validate()) return;
-        if (modal === "add")
-            setData([
-                ...data,
-                {
-                    id: Date.now(),
-                    nama: form.nama,
-                    alamat: form.alamat,
-                    pegawai: Number(form.pegawai),
-                    koneksi: 1,
-                    profiling: "Belum",
-                },
-            ]);
-        else if (editing)
-            setData(
-                data.map((o) =>
-                    o.id === editing.id
-                        ? {
-                              ...o,
-                              nama: form.nama,
-                              alamat: form.alamat,
-                              pegawai: Number(form.pegawai),
-                          }
-                        : o,
-                ),
-            );
-        setModal(null);
+        setSaving(true);
+        try {
+            const payload = {
+                nama_opd: form.nama,
+                alamat: form.alamat,
+                jumlah_pegawai: Number(form.pegawai),
+            };
+            const response =
+                modal === "add"
+                    ? await axios.post(route("opd.store"), payload, {
+                          headers: { Accept: "application/json" },
+                      })
+                    : await axios.put(
+                          route("opd.update", { opd: editing?.id }),
+                          payload,
+                          { headers: { Accept: "application/json" } },
+                      );
+            const savedOpd = response.data.opd as OpdDashboardRecord;
+            const nextOpds =
+                modal === "add"
+                    ? [...opds, savedOpd]
+                    : opds.map((opd) =>
+                          opd.id === savedOpd.id ? savedOpd : opd,
+                      );
+            onChanged(nextOpds);
+            setData(nextOpds.map(mapOpd));
+            setModal(null);
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                const backendErrors = error.response?.data?.errors ?? {};
+                setErrors({
+                    nama: backendErrors.nama_opd?.[0] ?? "",
+                    alamat: backendErrors.alamat?.[0] ?? "",
+                    pegawai:
+                        backendErrors.jumlah_pegawai?.[0] ?? "",
+                });
+                setRequestError(
+                    error.response?.data?.message ??
+                        "Data OPD gagal disimpan. Silakan coba lagi.",
+                );
+            } else {
+                setRequestError("Terjadi kesalahan saat menyimpan data OPD.");
+            }
+        } finally {
+            setSaving(false);
+        }
     };
-    const del = () => {
-        if (editing) setData(data.filter((o) => o.id !== editing.id));
-        setModal(null);
+    const del = async () => {
+        if (!editing) return;
+        setRequestError("");
+        setSaving(true);
+        try {
+            await axios.delete(route("opd.destroy", { opd: editing.id }), {
+                headers: { Accept: "application/json" },
+            });
+            const nextOpds = opds.filter((opd) => opd.id !== editing.id);
+            onChanged(nextOpds);
+            setData(nextOpds.map(mapOpd));
+            setModal(null);
+        } catch (error) {
+            setRequestError(
+                axios.isAxiosError(error)
+                    ? error.response?.data?.message ??
+                          "Data OPD gagal dihapus."
+                    : "Terjadi kesalahan saat menghapus data OPD.",
+            );
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -2403,6 +2708,11 @@ function MasterOPD() {
                 sub="Kelola Organisasi Perangkat Daerah yang terdaftar dalam sistem"
                 action={<Btn onClick={openAdd}>＋ Tambah OPD</Btn>}
             />
+            {requestError && (
+                <div className="mb-4">
+                    <InfoBox type="error">{requestError}</InfoBox>
+                </div>
+            )}
             <Card>
                 <div className="p-4 border-b border-slate-100">
                     <SearchBar
@@ -2571,8 +2881,9 @@ function MasterOPD() {
                         />
                     </div>
                     <div className="px-6 pb-6 flex gap-3">
-                        <Btn onClick={save}>
-                            <Save size={15} /> Simpan Data
+                        <Btn disabled={saving} onClick={save}>
+                            <Save size={15} />{" "}
+                            {saving ? "Menyimpan..." : "Simpan Data"}
                         </Btn>
                         <Btn variant="secondary" onClick={() => setModal(null)}>
                             Batal
@@ -3030,11 +3341,96 @@ function MasterUser() {
 }
 
 // ─── Form Profiling ───────────────────────────────────────────────────────────
-function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
+function FormProfiling({
+    onNav,
+    onCreated,
+    opdName,
+    existingProfiling,
+}: {
+    onNav: (s: Screen) => void;
+    onCreated: (profiling: any) => void;
+    opdName?: string | null;
+    existingProfiling?: ProfilingRecord;
+}) {
+    const canEdit =
+        !existingProfiling ||
+        ["draft", "dikembalikan"].includes(
+            existingProfiling.status_verifikasi,
+        );
+    const existingConnection = existingProfiling?.opd?.koneksi_internet?.find(
+        (item) => item.status === "aktif",
+    );
+    const existingIssueLabels: Record<string, string> = {
+        bandwidth_kurang: "Speed Lambat",
+        device: "Perangkat Rusak",
+        topologi: "Konfigurasi Salah",
+        sosialisasi: "Gangguan ISP",
+    };
     const [step, setStep] = useState(0);
     const [done, setDone] = useState(false);
-    const [apps, setApps] = useState(["SIMDA", "SIPD"]);
-    const [kendala, setKendala] = useState<string[]>([]);
+    const [profilingId, setProfilingId] = useState<number | null>(
+        existingProfiling?.id ?? null,
+    );
+    const [apps, setApps] = useState(
+        existingProfiling?.aplikasi?.map((app) => app.nama_aplikasi) ?? [
+            "SIMDA",
+            "SIPD",
+        ],
+    );
+    const [kendala, setKendala] = useState(
+        existingProfiling?.kendala?.map((item) =>
+            item.nama_kendala
+                ? "Lainnya"
+                : (existingIssueLabels[item.jenis_kendala] ??
+                  item.jenis_kendala),
+        ) ?? [],
+    );
+    const [deviceCount, setDeviceCount] = useState(
+        String(existingProfiling?.jumlah_device ?? ""),
+    );
+    const [bandwidth, setBandwidth] = useState(
+        String(existingConnection?.bandwidth_mbps ?? ""),
+    );
+    const [isp, setIsp] = useState(existingConnection?.nama_isp ?? "");
+    const [download, setDownload] = useState(
+        String(existingProfiling?.speed_test?.kecepatan_unduh ?? ""),
+    );
+    const [upload, setUpload] = useState(
+        String(existingProfiling?.speed_test?.kecepatan_unggah ?? ""),
+    );
+    const [ping, setPing] = useState(
+        String(existingProfiling?.speed_test?.ping_ms ?? ""),
+    );
+    const [condition, setCondition] = useState(
+        existingProfiling?.speed_test?.hasil === "tidak_sesuai"
+            ? "Sedang — Ada penurunan performa"
+            : "Baik — Kecepatan sesuai bandwidth",
+    );
+    const [testDate, setTestDate] = useState(
+        existingProfiling?.speed_test?.tanggal_test ??
+            (existingProfiling?.periode
+                ? `${existingProfiling.periode}-01`
+                : undefined) ??
+            new Date().toISOString().slice(0, 10),
+    );
+    const period = testDate.slice(0, 7);
+    const [profilingPeriod, setProfilingPeriod] = useState(
+        existingProfiling?.periode ?? null,
+    );
+    const [kendalaDescription, setKendalaDescription] = useState(
+        existingProfiling?.kendala
+            ?.map((item) => item.deskripsi)
+            .filter(Boolean)
+            .join("; ") ??
+            existingProfiling?.kesimpulan ??
+            "",
+    );
+    const [otherIssueName, setOtherIssueName] = useState(
+        existingProfiling?.kendala?.find((item) => item.nama_kendala)
+            ?.nama_kendala ?? "",
+    );
+    const [saveError, setSaveError] = useState("");
+    const [saving, setSaving] = useState(false);
     const steps = [
         "Kondisi Umum",
         "Aplikasi",
@@ -3048,7 +3444,71 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
         "Perangkat Rusak",
         "Konfigurasi Salah",
         "Gangguan ISP",
+        "Lainnya",
     ];
+    const saveProfiling = async (submit: boolean) => {
+        setSaveError("");
+        const kendalaTypes: Record<string, string> = {
+            "Koneksi Putus": "bandwidth_kurang",
+            "Speed Lambat": "bandwidth_kurang",
+            "Perangkat Rusak": "device",
+            "Konfigurasi Salah": "topologi",
+            "Gangguan ISP": "sosialisasi",
+            Lainnya: "lainnya",
+        };
+        if (kendala.includes("Lainnya") && !otherIssueName.trim()) {
+            setSaveError("Jelaskan nama kendala pada pilihan Lainnya.");
+            return;
+        }
+        setSaving(true);
+        try {
+            const response = await axios.request<{
+                profiling: ProfilingRecord;
+            }>({
+                method: profilingId && profilingPeriod === period ? "put" : "post",
+                url: profilingId && profilingPeriod === period
+                    ? route("profiling.update", profilingId)
+                    : route("profiling.store"),
+                data: {
+                    periode: period,
+                    jumlah_device: deviceCount,
+                    bandwidth_mbps: bandwidth,
+                    nama_isp: isp,
+                    kesimpulan: kendalaDescription || null,
+                    aplikasi: apps,
+                    kecepatan_unduh: download || null,
+                    kecepatan_unggah: upload || null,
+                    ping_ms: ping === "" ? null : ping,
+                    hasil: condition.startsWith("Baik") ? "sesuai" : "tidak_sesuai",
+                    tanggal_test: testDate,
+                    kendala: kendala.map((item) => ({
+                        jenis_kendala: kendalaTypes[item],
+                        nama_kendala:
+                            item === "Lainnya" ? otherIssueName.trim() : null,
+                        deskripsi: kendalaDescription,
+                    })),
+                    ajukan: submit,
+                },
+                headers: { Accept: "application/json" },
+            });
+            setProfilingId(response.data.profiling.id);
+            setProfilingPeriod(response.data.profiling.periode);
+            onCreated(response.data.profiling);
+            if (submit) setDone(true);
+            else setSaveError("Draft profiling berhasil disimpan.");
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                setSaveError(
+                    error.response?.data?.message ??
+                        "Profiling gagal disimpan. Periksa kembali data Anda.",
+                );
+            } else {
+                setSaveError("Terjadi kesalahan saat menyimpan profiling.");
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
 
     if (done)
         return (
@@ -3088,6 +3548,14 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                 title="Isi Profiling Jaringan"
                 sub="Laporkan kondisi infrastruktur jaringan OPD secara berkala"
             />
+            {!canEdit && (
+                <div className="mb-5">
+                    <InfoBox type="info">
+                        Profiling periode ini sudah diajukan dan hanya dapat
+                        diubah jika Admin mengembalikannya untuk revisi.
+                    </InfoBox>
+                </div>
+            )}
             <div className="flex items-center mb-6 overflow-x-auto pb-2 gap-0">
                 {steps.map((s, i) => (
                     <div key={s} className="flex items-center flex-shrink-0">
@@ -3152,14 +3620,11 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                 </p>
                             </div>
                         </div>
-                        <FSelect
+                        <FInput
                             label="Nama OPD"
-                            options={[
-                                "Dinas Pendidikan dan Kebudayaan",
-                                "Dinas Kesehatan",
-                                "Dinas PUPR",
-                            ]}
-                            hint="OPD sesuai akun yang login"
+                            value={opdName ?? "Akun belum terhubung ke OPD"}
+                            readOnly
+                            hint="OPD mengikuti akun yang login"
                         />
                         <FSelect
                             label="Jenis Koneksi Internet"
@@ -3177,18 +3642,24 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                 type="number"
                                 placeholder="100"
                                 hint="Sesuai kontrak dengan ISP"
+                                    value={bandwidth}
+                                    onChange={setBandwidth}
                             />
                             <FInput
                                 label="Jumlah Perangkat Terhubung"
                                 type="number"
                                 placeholder="52"
                                 hint="PC, laptop, printer, dll"
+                                value={deviceCount}
+                                onChange={setDeviceCount}
                             />
                         </div>
                         <FInput
                             label="Nama ISP / Penyedia Layanan"
                             placeholder="PT Telkom Indonesia"
                             hint="Penyedia internet yang digunakan"
+                            value={isp}
+                            onChange={setIsp}
                         />
                     </div>
                 )}
@@ -3286,18 +3757,24 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                 type="number"
                                 placeholder="0"
                                 hint="Kecepatan unduh"
+                                value={download}
+                                onChange={setDownload}
                             />
                             <FInput
                                 label="Upload (Mbps)"
                                 type="number"
                                 placeholder="0"
                                 hint="Kecepatan unggah"
+                                value={upload}
+                                onChange={setUpload}
                             />
                             <FInput
                                 label="Ping (ms)"
                                 type="number"
                                 placeholder="0"
                                 hint="Latensi jaringan"
+                                value={ping}
+                                onChange={setPing}
                             />
                         </div>
                         <FSelect
@@ -3308,11 +3785,15 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                 "Buruk — Jaringan sering terganggu",
                             ]}
                             hint="Berdasarkan pengalaman penggunaan sehari-hari"
+                            value={condition}
+                            onChange={setCondition}
                         />
                         <FInput
                             label="Tanggal Pengukuran"
                             type="date"
-                            hint="Tanggal saat speed test dilakukan"
+                            hint="Bulan pada tanggal ini menjadi periode profiling"
+                            value={testDate}
+                            onChange={setTestDate}
                         />
                     </div>
                 )}
@@ -3369,10 +3850,21 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                 </label>
                             ))}
                         </div>
+                        {kendala.includes("Lainnya") && (
+                            <FInput
+                                label="Sebutkan Kendala Lainnya"
+                                placeholder="Contoh: Wi-Fi ruang pelayanan tidak stabil"
+                                value={otherIssueName}
+                                onChange={setOtherIssueName}
+                                required
+                            />
+                        )}
                         <FTextarea
                             label="Deskripsi Kendala (opsional)"
                             placeholder="Jelaskan detail: kapan terjadi, frekuensi, dampak, langkah yang sudah dicoba..."
                             rows={4}
+                            value={kendalaDescription}
+                            onChange={setKendalaDescription}
                         />
                     </div>
                 )}
@@ -3398,23 +3890,31 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                         </InfoBox>
                         <div className="bg-slate-50 rounded-2xl p-5 space-y-3">
                             {[
-                                ["OPD", "Dinas Pendidikan dan Kebudayaan"],
+                                ["Periode", period],
+                                ["OPD", "Sesuai akun yang masuk"],
                                 [
                                     "Koneksi",
-                                    "Fiber Optik — PT Telkom Indonesia",
+                                    `${isp || "ISP belum diisi"} · Fiber Optik`,
                                 ],
-                                ["Bandwidth", "100 Mbps"],
-                                ["Jumlah Device", "52"],
+                                ["Bandwidth", `${bandwidth || "-"} Mbps`],
+                                ["Jumlah Device", deviceCount || "Belum diisi"],
                                 ["Aplikasi", apps.filter(Boolean).join(", ")],
                                 [
                                     "Speed Test",
-                                    "DL: 87 Mbps · UL: 34 Mbps · Ping: 12ms",
+                                    `DL: ${download || "-"} Mbps · UL: ${upload || "-"} Mbps · Ping: ${ping || "-"}ms`,
                                 ],
-                                ["Kondisi", "Baik"],
+                                ["Kondisi", condition.split(" — ")[0]],
                                 [
                                     "Kendala",
                                     kendala.length
-                                        ? kendala.join(", ")
+                                        ? kendala
+                                              .map((item) =>
+                                                  item === "Lainnya"
+                                                      ? otherIssueName.trim() ||
+                                                        "Lainnya (belum dijelaskan)"
+                                                      : item,
+                                              )
+                                              .join(", ")
                                         : "Tidak ada",
                                 ],
                             ].map(([k, v]) => (
@@ -3443,7 +3943,11 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                 ← Kembali
                             </Btn>
                         )}
-                        <Btn variant="ghost">
+                        <Btn
+                            variant="ghost"
+                            disabled={!canEdit || saving || !deviceCount}
+                            onClick={() => saveProfiling(false)}
+                        >
                             <Save size={15} /> Simpan Draft
                         </Btn>
                     </div>
@@ -3452,19 +3956,90 @@ function FormProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                             Lanjutkan →
                         </Btn>
                     ) : (
-                        <Btn onClick={() => setDone(true)}>
-                            <FilePenLine size={16} /> Ajukan Profiling
+                        <Btn
+                            disabled={
+                                !canEdit ||
+                                saving ||
+                                !deviceCount ||
+                                !bandwidth ||
+                                !isp
+                            }
+                            onClick={() => saveProfiling(true)}
+                        >
+                            <FilePenLine size={16} />{" "}
+                            {saving ? "Menyimpan..." : "Ajukan Profiling"}
                         </Btn>
                     )}
                 </div>
+                {saveError && (
+                    <div className="mt-4">
+                        <InfoBox
+                            type={
+                                saveError.startsWith("Draft profiling berhasil")
+                                    ? "success"
+                                    : "error"
+                            }
+                        >
+                            {saveError}
+                        </InfoBox>
+                    </div>
+                )}
             </Card>
         </div>
     );
 }
 
 // ─── Riwayat Profiling ────────────────────────────────────────────────────────
-function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
-    const [sel, setSel] = useState<(typeof riwayatProfiling)[0] | null>(null);
+function RiwayatProfiling({
+    onContinue,
+    profilings,
+}: {
+    onContinue: (profilingId: number) => void;
+    profilings: ProfilingRecord[];
+}) {
+    const rows = profilings.map((profiling) => {
+        const connection = profiling.opd?.koneksi_internet?.find(
+            (item) => item.status === "aktif",
+        );
+        const speedTest = profiling.speed_test;
+        return {
+            ...riwayatProfiling[0],
+            id: profiling.id,
+            periode: profiling.periode,
+            status: {
+                diajukan: "Diajukan",
+                diverifikasi: "Diverifikasi",
+                dikembalikan: "Dikembalikan",
+                draft: "Draft",
+            }[profiling.status_verifikasi] ?? profiling.status_verifikasi,
+            kondisi: speedTest?.hasil === "sesuai" ? "Baik" : "Sedang",
+            dl: Number(speedTest?.kecepatan_unduh ?? 0),
+            ul: Number(speedTest?.kecepatan_unggah ?? 0),
+            ping:
+                speedTest?.ping_ms == null
+                    ? "-"
+                    : Number(speedTest.ping_ms),
+            bandwidth: `${connection?.bandwidth_mbps ?? 0} Mbps`,
+            device: profiling.jumlah_device,
+            isp: connection?.nama_isp ?? "-",
+            apps: (profiling.aplikasi ?? []).map((app) => app.nama_aplikasi),
+            kendala:
+                profiling.kendala
+                    ?.map(getProfilingIssueLabel)
+                    .join(", ") || "Tidak ada",
+            catatan:
+                profiling.kesimpulan ??
+                profiling.kendala
+                    ?.map((item) => item.deskripsi)
+                    .filter(Boolean)
+                    .join("; ") ??
+                "Belum ada catatan verifikasi.",
+            verifikator: profiling.tanggal_diverifikasi ? "Admin" : "-",
+            tglVerifikasi: profiling.tanggal_diverifikasi ?? "-",
+        };
+    });
+    const [selectedId, setSelectedId] = useState<number | null>(null);
+    const sel = rows.find((row) => row.id === selectedId) ?? null;
     return (
         <div>
             <style>{`
@@ -3490,16 +4065,16 @@ function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
             />
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                 <div className="lg:col-span-2 space-y-3">
-                    {riwayatProfiling.map((r) => (
+                    {rows.map((r) => (
                         <Card
-                            key={r.periode}
+                            key={r.id}
                             className={clx(
                                 "p-4",
-                                sel?.periode === r.periode
+                                sel?.id === r.id
                                     ? "border-blue-500 ring-1 ring-blue-400 bg-blue-50/20"
                                     : "",
                             )}
-                            onClick={() => setSel(r)}
+                            onClick={() => setSelectedId(r.id)}
                         >
                             <div className="flex items-start justify-between mb-3">
                                 <div>
@@ -3516,7 +4091,7 @@ function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                         statusBadge(r.kondisi)}
                                 </div>
                             </div>
-                            {r.status !== "Ditolak" && (
+                            {r.status !== "Dikembalikan" && (
                                 <div className="flex items-center gap-4">
                                     <span className="text-xs text-slate-500">
                                         <Download
@@ -3537,12 +4112,18 @@ function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                             size={14}
                                             className="inline text-amber-500"
                                         />{" "}
-                                        <strong>{r.ping}</strong>ms
+                                        <strong>{r.ping}</strong>
+                                        {typeof r.ping === "number" ? "ms" : ""}
                                     </span>
                                 </div>
                             )}
                         </Card>
                     ))}
+                    {rows.length === 0 && (
+                        <Card className="p-6 text-center text-sm text-slate-500">
+                            Belum ada data profiling tersimpan.
+                        </Card>
+                    )}
                 </div>
                 <div className="lg:col-span-3">
                     {sel ? (
@@ -3560,7 +4141,7 @@ function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                 {statusBadge(sel.status)}
                             </div>
 
-                            {sel.status === "Ditolak" ? (
+                            {sel.status === "Dikembalikan" ? (
                                 <InfoBox type="error">
                                     <p className="font-semibold mb-1">
                                         Profiling Ditolak
@@ -3582,40 +4163,34 @@ function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                 </InfoBox>
                             )}
 
-                            {sel.status !== "Ditolak" && (
+                            {sel.status !== "Dikembalikan" && (
                                 <div className="grid grid-cols-3 gap-3">
-                                    {[
-                                        [
-                                            <>
-                                                <Download size={14} /> Download
-                                            </>,
-                                            `${sel.dl} Mbps`,
-                                        ],
-                                        [
-                                            <>
-                                                <Upload size={14} /> Upload
-                                            </>,
-                                            `${sel.ul} Mbps`,
-                                        ],
-                                        [
-                                            <>
-                                                <Activity size={14} /> Ping
-                                            </>,
-                                            `${sel.ping} ms`,
-                                        ],
-                                    ].map(([l, v]) => (
-                                        <div
-                                            key={String(v)}
-                                            className="bg-slate-50 rounded-xl p-3 text-center"
-                                        >
-                                            <p className="text-xs text-slate-400">
-                                                {l}
-                                            </p>
-                                            <p className="font-bold text-slate-800 text-lg mt-0.5">
-                                                {v}
-                                            </p>
-                                        </div>
-                                    ))}
+                                    <div className="bg-slate-50 rounded-xl p-3 text-center">
+                                        <p className="text-xs text-slate-400 flex items-center justify-center gap-1">
+                                            <Download size={14} /> Download
+                                        </p>
+                                        <p className="font-bold text-slate-800 text-lg mt-0.5">
+                                            {sel.dl} Mbps
+                                        </p>
+                                    </div>
+                                    <div className="bg-slate-50 rounded-xl p-3 text-center">
+                                        <p className="text-xs text-slate-400 flex items-center justify-center gap-1">
+                                            <Upload size={14} /> Upload
+                                        </p>
+                                        <p className="font-bold text-slate-800 text-lg mt-0.5">
+                                            {sel.ul} Mbps
+                                        </p>
+                                    </div>
+                                    <div className="bg-slate-50 rounded-xl p-3 text-center">
+                                        <p className="text-xs text-slate-400 flex items-center justify-center gap-1">
+                                            <Activity size={14} /> Ping
+                                        </p>
+                                        <p className="font-bold text-slate-800 text-lg mt-0.5">
+                                            {typeof sel.ping === "number"
+                                                ? `${sel.ping} ms`
+                                                : "-"}
+                                        </p>
+                                    </div>
                                 </div>
                             )}
 
@@ -3649,12 +4224,20 @@ function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                                 >
                                     <FileDown size={15} /> Unduh PDF
                                 </Btn>
-                                {sel.status === "Ditolak" && (
+                                {sel.status === "Dikembalikan" && (
                                     <Btn
                                         small
-                                        onClick={() => onNav("form-profiling")}
+                                        onClick={() => onContinue(sel.id)}
                                     >
                                         <FilePenLine size={15} /> Isi Ulang
+                                    </Btn>
+                                )}
+                                {sel.status === "Draft" && (
+                                    <Btn
+                                        small
+                                        onClick={() => onContinue(sel.id)}
+                                    >
+                                        <FilePenLine size={15} /> Lanjutkan
                                     </Btn>
                                 )}
                             </div>
@@ -3698,7 +4281,7 @@ function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
                     <p>ISP: {sel.isp}</p>
                     <p>Aplikasi: {sel.apps.join(", ")}</p>
                     <p>Kendala: {sel.kendala}</p>
-                    {sel.status !== "Ditolak" && (
+                    {sel.status !== "Dikembalikan" && (
                         <p>
                             Speed test: Download {sel.dl} Mbps · Upload {sel.ul} Mbps · Ping {sel.ping} ms
                         </p>
@@ -3711,19 +4294,17 @@ function RiwayatProfiling({ onNav }: { onNav: (s: Screen) => void }) {
 }
 
 // ─── Verifikasi Profiling ─────────────────────────────────────────────────────
-function VerifikasiProfiling() {
-    const [sel, setSel] = useState<(typeof profilingQueue)[0] | null>(null);
+function VerifikasiProfiling({
+    queue,
+    onResolved,
+}: {
+    queue: ProfilingQueueItem[];
+    onResolved: (id: number, status: string, kesimpulan: string) => void;
+}) {
+    const [sel, setSel] = useState<ProfilingQueueItem | null>(null);
     const [resolvedProfilings, setResolvedProfilings] = useState<
         Record<number, "approved" | "rejected">
-    >(() => {
-        try {
-            return JSON.parse(
-                localStorage.getItem("siprojar.adminResolvedProfilings") ?? "{}",
-            );
-        } catch {
-            return {};
-        }
-    });
+    >({});
     const [statusFilter, setStatusFilter] = useState("Semua Status");
     const [monthFilter, setMonthFilter] = useState("Semua Bulan");
     const [kesimpulan, setKesimpulan] = useState("");
@@ -3735,23 +4316,53 @@ function VerifikasiProfiling() {
     >(null);
     const [catatanTolak, setCatatanTolak] = useState("");
     const [done, setDone] = useState<"approved" | "rejected" | null>(null);
+    const [requestError, setRequestError] = useState("");
 
-    const pct = sel ? Math.round((sel.dl / parseInt(sel.bandwidth)) * 100) : 0;
+    const contractedBandwidth = sel ? parseInt(sel.bandwidth) : 0;
+    const pct =
+        sel && contractedBandwidth > 0
+            ? Math.round((sel.dl / contractedBandwidth) * 100)
+            : 0;
     const wajar = pct >= 60;
     const canSubmit = kesimpulan.trim().length >= 10 && kewajaranOk !== null;
-    const resolveProfiling = (decision: "approved" | "rejected") => {
+    const resolveProfiling = async (decision: "approved" | "rejected") => {
         if (!sel) return;
-        const nextResolved = { ...resolvedProfilings, [sel.id]: decision };
-        localStorage.setItem(
-            "siprojar.adminResolvedProfilings",
-            JSON.stringify(nextResolved),
-        );
-        setResolvedProfilings(nextResolved);
-        setDecisionModal(null);
-        setDone(decision);
-        setSel(null);
+        setRequestError("");
+        try {
+            const approved = decision === "approved";
+            const url = route(
+                approved ? "profiling.verify" : "profiling.return",
+                { profiling: sel.id },
+            );
+            await axios.post(
+                url,
+                approved
+                    ? { kesimpulan }
+                    : { catatan: catatanTolak },
+                { headers: { Accept: "application/json" } },
+            );
+            setResolvedProfilings((current) => ({
+                ...current,
+                [sel.id]: decision,
+            }));
+            onResolved(
+                sel.id,
+                approved ? "diverifikasi" : "dikembalikan",
+                approved ? kesimpulan : catatanTolak,
+            );
+            setDecisionModal(null);
+            setDone(decision);
+            setSel(null);
+        } catch (error) {
+            setRequestError(
+                axios.isAxiosError(error)
+                    ? error.response?.data?.message ??
+                          "Keputusan gagal disimpan ke server."
+                    : "Terjadi kesalahan saat menyimpan keputusan.",
+            );
+        }
     };
-    const filteredProfilings = profilingQueue.filter((profiling) => {
+    const filteredProfilings = queue.filter((profiling) => {
         const month = Number(profiling.diajukan.slice(5, 7));
         const matchesStatus =
             statusFilter === "Semua Status" ||
@@ -3845,15 +4456,18 @@ function VerifikasiProfiling() {
                         </Card>
                     ))}
                     {filteredProfilings.length === 0 && (
-                        <Card className="p-8 text-center">
-                            <p className="text-slate-400 text-sm">
-                                Tidak ada profiling yang sesuai filter.
-                            </p>
+                        <Card className="p-6 text-center text-sm text-slate-500">
+                            Belum ada pengajuan profiling untuk diverifikasi.
                         </Card>
                     )}
                 </div>
 
                 <div className="lg:col-span-3">
+                    {requestError && (
+                        <div className="mb-4">
+                            <InfoBox type="error">{requestError}</InfoBox>
+                        </div>
+                    )}
                     {sel ? (
                         <Card className="p-6 space-y-5 sticky top-4">
                             <div className="flex items-start justify-between">
@@ -4173,19 +4787,124 @@ function VerifikasiProfiling() {
 }
 
 // ─── Kelola Tiket ─────────────────────────────────────────────────────────────
-function KelolaTicket() {
-    const [sel, setSel] = useState<(typeof ticketList)[0] | null>(null);
+function KelolaTicket({
+    tickets,
+    vendors,
+    onChanged,
+}: {
+    tickets: any[];
+    vendors: Array<{ id: number; nama_vendor: string }>;
+    onChanged: (ticket: any) => void;
+}) {
+    const ticketRows = tickets.map((ticket) => ({
+        databaseId: ticket.id,
+        id: ticket.nomor_tiket,
+        opd: ticket.kendala?.profiling?.opd?.nama_opd ?? "OPD",
+        kendala: getProfilingIssueLabel(
+            ticket.kendala ?? { jenis_kendala: "" },
+        ),
+        deskripsi: ticket.kendala?.deskripsi ?? "",
+        status: {
+            baru: "Baru",
+            diteruskan: "Diteruskan",
+            proses: "Proses",
+            menunggu_verifikasi: "Menunggu Verifikasi",
+            selesai: "Selesai",
+            ditolak: "Ditolak",
+        }[ticket.status] ?? ticket.status,
+        tanggal: ticket.created_at?.slice(0, 10) ?? "",
+        vendor: ticket.pihak_ketiga?.nama_vendor ?? null,
+        vendorId: ticket.pihak_ketiga_id,
+        prioritas:
+            ticket.urgensi === "tinggi"
+                ? "Tinggi"
+                : ticket.urgensi === "rendah"
+                  ? "Rendah"
+                  : "Sedang",
+        histori: (ticket.riwayat ?? []).map((history: any) => ({
+            tgl: history.tanggal?.slice(0, 10) ?? "",
+            ev: history.catatan,
+            aktor: history.user?.nama ?? "Pengguna",
+        })),
+    }));
+    const mapTicket = (ticket: any) => ({
+        databaseId: ticket.id,
+        id: ticket.nomor_tiket,
+        opd: ticket.kendala?.profiling?.opd?.nama_opd ?? "OPD",
+        kendala: getProfilingIssueLabel(
+            ticket.kendala ?? { jenis_kendala: "" },
+        ),
+        deskripsi: ticket.kendala?.deskripsi ?? "",
+        status:
+            {
+                baru: "Baru",
+                diteruskan: "Diteruskan",
+                proses: "Proses",
+                menunggu_verifikasi: "Menunggu Verifikasi",
+                selesai: "Selesai",
+                ditolak: "Ditolak",
+            }[ticket.status] ?? ticket.status,
+        tanggal: ticket.created_at?.slice(0, 10) ?? "",
+        vendor: ticket.pihak_ketiga?.nama_vendor ?? null,
+        vendorId: ticket.pihak_ketiga_id,
+        prioritas:
+            ticket.urgensi === "tinggi"
+                ? "Tinggi"
+                : ticket.urgensi === "rendah"
+                  ? "Rendah"
+                  : "Sedang",
+        histori: (ticket.riwayat ?? []).map((history: any) => ({
+                tgl: history.tanggal?.slice(0, 10) ?? "",
+                ev: history.catatan,
+                aktor: history.user?.nama ?? "Pengguna",
+            })),
+    });
+    const [sel, setSel] = useState<(typeof ticketRows)[number] | null>(null);
     const [filter, setFilter] = useState("Semua Status");
     const [opdFilter, setOpdFilter] = useState("Semua OPD");
     const [action, setAction] = useState<"internal" | "teruskan" | null>(null);
-    const [vendor, setVendor] = useState("CV Jaringan Sejahtera");
+    const [vendor, setVendor] = useState(vendors[0]?.nama_vendor ?? "");
     const [actionDone, setActionDone] = useState(false);
+    const [actionError, setActionError] = useState("");
+    const [saving, setSaving] = useState(false);
 
-    const filtered = ticketList.filter(
+    const filtered = ticketRows.filter(
         (t) =>
             (filter === "Semua Status" || t.status === filter) &&
             (opdFilter === "Semua OPD" || t.opd === opdFilter),
     );
+    const submitForward = async () => {
+        if (!sel || !action) return;
+        setActionError("");
+        setSaving(true);
+        try {
+            const selectedVendor = vendors.find(
+                (item) => item.nama_vendor === vendor,
+            );
+            const response = await axios.post(
+                route("tiket.forward", { tiket: sel.databaseId }),
+                {
+                    ditangani_internal: action === "internal",
+                    pihak_ketiga_id:
+                        action === "teruskan" ? selectedVendor?.id : null,
+                },
+                { headers: { Accept: "application/json" } },
+            );
+            const updatedTicket = response.data.ticket;
+            onChanged(updatedTicket);
+            setSel(mapTicket(updatedTicket));
+            setActionDone(true);
+        } catch (error) {
+            setActionError(
+                axios.isAxiosError(error)
+                    ? error.response?.data?.message ??
+                          "Tiket gagal diperbarui. Silakan coba lagi."
+                    : "Terjadi kesalahan saat meneruskan tiket.",
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
 
     return (
         <div>
@@ -4202,7 +4921,9 @@ function KelolaTicket() {
                                 "Baru",
                                 "Diteruskan",
                                 "Proses",
+                                "Menunggu Verifikasi",
                                 "Selesai",
+                                "Ditolak",
                             ]}
                             value={filter}
                             onChange={(value) => {
@@ -4215,7 +4936,7 @@ function KelolaTicket() {
                                 "Semua OPD",
                                 ...Array.from(
                                     new Set(
-                                        ticketList.map((ticket) => ticket.opd),
+                                        ticketRows.map((ticket) => ticket.opd),
                                     ),
                                 ),
                             ]}
@@ -4282,6 +5003,13 @@ function KelolaTicket() {
                             </div>
                         </Card>
                     ))}
+                    {filtered.length === 0 && (
+                        <p className="px-3 py-8 text-center text-sm text-slate-400">
+                            {ticketRows.length === 0
+                                ? "Belum ada tiket di database."
+                                : "Tidak ada tiket yang sesuai dengan filter."}
+                        </p>
+                    )}
                 </div>
 
                 <div className="lg:col-span-3">
@@ -4400,27 +5128,49 @@ function KelolaTicket() {
                                         </button>
                                     </div>
                                     {action === "teruskan" && (
-                                        <FSelect
-                                            label="Pilih Vendor / Pihak Ketiga"
-                                            options={[
-                                                "CV Jaringan Sejahtera",
-                                                "PT Koneksi Andal",
-                                            ]}
-                                            value={vendor}
-                                            onChange={setVendor}
-                                            hint="Vendor dipilih akan mendapat notifikasi dan bisa menerima/menolak tiket"
-                                        />
+                                        vendors.length ? (
+                                            <FSelect
+                                                label="Pilih Vendor / Pihak Ketiga"
+                                                options={vendors.map(
+                                                    (item) => item.nama_vendor,
+                                                )}
+                                                value={vendor}
+                                                onChange={setVendor}
+                                                hint="Vendor dipilih akan mendapat notifikasi dan bisa menerima/menolak tiket"
+                                            />
+                                        ) : (
+                                            <InfoBox type="error">
+                                                Belum ada pihak ketiga/vendor
+                                                terdaftar. Tambahkan vendor
+                                                terlebih dahulu sebelum
+                                                meneruskan tiket.
+                                            </InfoBox>
+                                        )
+                                    )}
+                                    {actionError && (
+                                        <InfoBox type="error">
+                                            {actionError}
+                                        </InfoBox>
                                     )}
                                     {action && (
                                         <div className="flex gap-3 pt-2">
                                             <Btn
-                                                onClick={() =>
-                                                    setActionDone(true)
+                                                disabled={
+                                                    saving ||
+                                                    (action === "teruskan" &&
+                                                        !vendors.some(
+                                                            (item) =>
+                                                                item.nama_vendor ===
+                                                                vendor,
+                                                        ))
                                                 }
+                                                onClick={submitForward}
                                             >
-                                                {action === "internal"
-                                                    ? <><Building2 size={16} /> Tangani Internal</>
-                                                    : <><ArrowRight size={16} /> Teruskan ke {vendor}</>}
+                                                {saving
+                                                    ? "Menyimpan..."
+                                                    : action === "internal"
+                                                      ? <><Building2 size={16} /> Tangani Internal</>
+                                                      : <><ArrowRight size={16} /> Teruskan ke {vendor}</>}
                                             </Btn>
                                             <Btn
                                                 variant="ghost"
@@ -5077,12 +5827,18 @@ function Laporan() {
 }
 
 // ─── Dashboard OPD ────────────────────────────────────────────────────────────
-function DashboardOPD({ onNav }: { onNav: (s: Screen) => void }) {
+function DashboardOPD({
+    onNav,
+    opdName,
+}: {
+    onNav: (s: Screen) => void;
+    opdName?: string | null;
+}) {
     return (
         <div className="space-y-6">
             <PageHeader
                 title="Dashboard OPD"
-                sub="Dinas Pendidikan dan Kebudayaan · Status jaringan dan pengaduan"
+                sub={`${opdName ?? "OPD belum terhubung"} · Status jaringan dan pengaduan`}
             />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <StatCard
@@ -5228,46 +5984,149 @@ function DashboardOPD({ onNav }: { onNav: (s: Screen) => void }) {
 }
 
 // ─── Tiket Pengaduan ──────────────────────────────────────────────────────────
-function TiketPengaduan() {
+function TiketPengaduan({
+    onCreated,
+    onNav,
+    opdName,
+    profilings,
+}: {
+    onCreated: (ticket: any) => void;
+    onNav: (screen: Screen) => void;
+    opdName?: string | null;
+    profilings: ProfilingRecord[];
+}) {
     const [step, setStep] = useState(0);
-    const [selK, setSelK] = useState("");
-    const [otherText, setOtherText] = useState("");
-    const [desc, setDesc] = useState("");
-    const [contact, setContact] = useState("");
+    const [selectedIssueId, setSelectedIssueId] = useState<number | null>(
+        null,
+    );
     const [done, setDone] = useState(false);
+    const [ticketNumber, setTicketNumber] = useState("");
+    const [submitError, setSubmitError] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+    const verifiedProfiling = profilings.find(
+        (profiling) => profiling.status_verifikasi === "diverifikasi",
+    );
+    const reportedIssues = verifiedProfiling?.kendala ?? [];
+    const selectedIssue =
+        reportedIssues.find((issue) => issue.id === selectedIssueId) ?? null;
+    const latestProfiling = profilings[0];
+    const displayedProfiling = verifiedProfiling ?? profilings[0];
+    const activeConnection = profilings
+        .flatMap((profiling) => profiling.opd?.koneksi_internet ?? [])
+        .find((connection) => connection.status === "aktif");
+    const profilingPeriod = displayedProfiling
+        ? new Intl.DateTimeFormat("id-ID", {
+              month: "short",
+              year: "numeric",
+          }).format(new Date(`${displayedProfiling.periode}-01T00:00:00`))
+        : null;
 
-    const opts = [
-        {
-            id: "Koneksi Putus",
-            icon: <XCircle size={24} />,
-            label: "Koneksi Putus",
-            desc: "Internet tidak dapat terhubung sama sekali",
-        },
-        {
-            id: "Speed Lambat",
-            icon: <Gauge size={24} />,
-            label: "Speed Lambat",
-            desc: "Kecepatan jauh di bawah bandwidth berlangganan",
-        },
-        {
-            id: "Perangkat Rusak",
-            icon: <HeartCrack size={24} />,
-            label: "Perangkat Rusak",
-            desc: "Router/switch/access point tidak berfungsi",
-        },
-        {
-            id: "Konfigurasi Jaringan",
-            icon: <Settings2 size={24} />,
-            label: "Konfigurasi Jaringan",
-            desc: "Pengaturan VLAN/IP/DNS bermasalah",
-        },
-        {
-            id: "Lainnya",
-            icon: <Pin size={24} />,
-            label: "Lainnya",
-            desc: "Kendala lain yang tidak tercantum di atas",
-        },
-    ];
+    if (!verifiedProfiling) {
+        const needsEditing = ["draft", "dikembalikan"].includes(
+            latestProfiling?.status_verifikasi ?? "",
+        );
+        const isWaitingForReview =
+            latestProfiling?.status_verifikasi === "diajukan";
+
+        return (
+            <div>
+                <PageHeader
+                    title="Ajukan Tiket Pengaduan"
+                    sub="Tiket pengaduan dapat diajukan setelah profiling OPD diverifikasi Admin"
+                />
+                <div className="max-w-2xl">
+                    <Card className="p-5 sm:p-7">
+                        <div className="mb-5">
+                            <h3 className="font-bold text-slate-800 mb-1">
+                                {isWaitingForReview
+                                    ? "Profiling sedang menunggu verifikasi"
+                                    : needsEditing
+                                      ? "Profiling belum siap diajukan"
+                                      : "Isi profiling terlebih dahulu"}
+                            </h3>
+                            <p className="text-sm text-slate-500">
+                                {isWaitingForReview
+                                    ? `Profiling periode ${latestProfiling?.periode} sudah diajukan. Tunggu Admin memverifikasinya sebelum membuat tiket.`
+                                    : latestProfiling?.status_verifikasi ===
+                                        "dikembalikan"
+                                      ? "Profiling dikembalikan oleh Admin dan perlu diperbaiki sebelum bisa digunakan untuk mengajukan tiket."
+                                      : needsEditing
+                                        ? "Profiling masih berupa draft. Lengkapi dan ajukan untuk verifikasi Admin."
+                                        : "Belum ada profiling untuk akun OPD ini. Isi dan ajukan profiling, lalu tunggu verifikasi Admin."}
+                            </p>
+                        </div>
+                        <InfoBox type="info">
+                            Profiling mencatat kondisi jaringan OPD. Tiket
+                            digunakan untuk melaporkan gangguan yang perlu
+                            ditangani setelah kondisi jaringan tersebut
+                            diverifikasi.
+                        </InfoBox>
+                        <div className="mt-5 flex gap-3 flex-wrap">
+                            <Btn
+                                onClick={() =>
+                                    onNav(
+                                        isWaitingForReview
+                                            ? "riwayat-profiling"
+                                            : "form-profiling",
+                                    )
+                                }
+                            >
+                                {isWaitingForReview
+                                    ? "Lihat Riwayat Profiling"
+                                    : needsEditing
+                                      ? "Lanjutkan Profiling"
+                                      : "Isi Profiling"}
+                            </Btn>
+                            {isWaitingForReview && (
+                                <Btn
+                                    variant="secondary"
+                                    onClick={() => onNav("dashboard-opd")}
+                                >
+                                    Kembali ke Dashboard
+                                </Btn>
+                            )}
+                        </div>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
+    if (reportedIssues.length === 0) {
+        return (
+            <div>
+                <PageHeader
+                    title="Ajukan Tiket Pengaduan"
+                    sub="Tiket dibuat berdasarkan kendala yang tercatat pada profiling"
+                />
+                <div className="max-w-2xl">
+                    <Card className="p-5 sm:p-7">
+                        <h3 className="font-bold text-slate-800 mb-1">
+                            Belum ada kendala di profiling terverifikasi
+                        </h3>
+                        <p className="text-sm text-slate-500 mb-5">
+                            Tiket hanya dapat diajukan untuk kendala yang sudah
+                            dilaporkan dalam profiling. Profiling terverifikasi
+                            periode {profilingPeriod} belum mencatat kendala.
+                        </p>
+                        <InfoBox type="info">
+                            Jika ada kendala yang perlu ditangani, catat pada
+                            profiling periode berikutnya dan ajukan untuk
+                            diverifikasi Admin. Kendala itu akan tersedia di
+                            sini setelah diverifikasi.
+                        </InfoBox>
+                        <div className="mt-5">
+                            <Btn
+                                onClick={() => onNav("form-profiling")}
+                            >
+                                Isi Profiling
+                            </Btn>
+                        </div>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
 
     if (done)
         return (
@@ -5280,7 +6139,7 @@ function TiketPengaduan() {
                 </h2>
                 <p className="text-slate-500 max-w-sm mb-1">
                     Nomor tiket:{" "}
-                    <strong className="text-blue-600">TKT-005</strong>
+                    <strong className="text-blue-600">{ticketNumber}</strong>
                 </p>
                 <p className="text-slate-400 text-sm max-w-sm">
                     Admin Diskominfo akan segera menindaklanjuti. Pantau status
@@ -5291,9 +6150,8 @@ function TiketPengaduan() {
                     onClick={() => {
                         setDone(false);
                         setStep(0);
-                        setSelK("");
-                        setDesc("");
-                        setOtherText("");
+                        setSelectedIssueId(null);
+                        setSubmitError("");
                     }}
                 >
                     Ajukan Tiket Lain
@@ -5312,68 +6170,85 @@ function TiketPengaduan() {
                     {step === 0 && (
                         <>
                             <h3 className="font-bold text-slate-800 mb-1">
-                                Pilih Jenis Kendala
+                                Pilih Kendala dari Profiling
                             </h3>
                             <p className="text-sm text-slate-400 mb-5">
-                                Pilih kategori yang paling sesuai. Jika tidak
-                                ada yang cocok, pilih <strong>Lainnya</strong>{" "}
-                                dan deskripsikan kendala Anda.
+                                Pilih kendala yang sudah dilaporkan dan
+                                diverifikasi pada profiling periode{" "}
+                                {profilingPeriod}.
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-                                {opts.map((k) => (
-                                    <button
-                                        key={k.id}
-                                        onClick={() => setSelK(k.id)}
-                                        className={clx(
-                                            "p-4 rounded-2xl border-2 text-left transition-all cursor-pointer group",
-                                            selK === k.id
-                                                ? "border-blue-500 bg-blue-50"
-                                                : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/30",
-                                        )}
-                                    >
-                                        <div className="text-2xl mb-2 transition-transform inline-block">
-                                            {k.icon}
-                                        </div>
-                                        <p
-                                            className={`font-semibold text-sm mb-0.5 ${
-                                                selK === k.id
-                                                    ? "text-blue-700"
-                                                    : "text-slate-800"
-                                            }`}
+                                {reportedIssues.map((issue) => {
+                                    const hasTicket = Boolean(issue.tiket);
+                                    const icon =
+                                        issue.jenis_kendala ===
+                                        "bandwidth_kurang" ? (
+                                            <Gauge size={24} />
+                                        ) : issue.jenis_kendala === "device" ? (
+                                            <HeartCrack size={24} />
+                                        ) : issue.jenis_kendala === "topologi" ? (
+                                            <Settings2 size={24} />
+                                        ) : issue.jenis_kendala ===
+                                          "sosialisasi" ? (
+                                            <Activity size={24} />
+                                        ) : (
+                                            <Pin size={24} />
+                                        );
+
+                                    return (
+                                        <button
+                                            key={issue.id}
+                                            disabled={hasTicket}
+                                            onClick={() =>
+                                                setSelectedIssueId(issue.id)
+                                            }
+                                            className={clx(
+                                                "p-4 rounded-2xl border-2 text-left transition-all group",
+                                                hasTicket
+                                                    ? "border-slate-100 bg-slate-50 cursor-not-allowed opacity-70"
+                                                    : "cursor-pointer hover:border-blue-300 hover:bg-blue-50/30",
+                                                selectedIssueId === issue.id
+                                                    ? "border-blue-500 bg-blue-50"
+                                                    : "",
+                                            )}
                                         >
-                                            {k.label}
-                                        </p>
-                                        <p className="text-xs text-slate-400">
-                                            {k.desc}
-                                        </p>
-                                    </button>
-                                ))}
+                                            <div className="text-2xl mb-2 transition-transform inline-block">
+                                                {icon}
+                                            </div>
+                                            <p
+                                                className={`font-semibold text-sm mb-0.5 ${
+                                                    selectedIssueId === issue.id
+                                                        ? "text-blue-700"
+                                                        : "text-slate-800"
+                                                }`}
+                                            >
+                                                {getProfilingIssueLabel(issue)}
+                                            </p>
+                                            <p className="text-xs text-slate-400">
+                                                {issue.deskripsi ||
+                                                    "Tidak ada uraian kendala pada profiling."}
+                                            </p>
+                                            {hasTicket && (
+                                                <p className="mt-2 text-xs font-semibold text-amber-700">
+                                                    Sudah diajukan sebagai tiket{" "}
+                                                    {issue.tiket?.nomor_tiket}
+                                                </p>
+                                            )}
+                                        </button>
+                                    );
+                                })}
                             </div>
-                            {selK === "Lainnya" && (
-                                <div className="mb-5">
-                                    <FInput
-                                        label="Sebutkan jenis kendala Anda"
-                                        required
-                                        placeholder="Contoh: Jaringan tidak stabil saat video conference, sering disconnect setiap 30 menit..."
-                                        value={otherText}
-                                        onChange={setOtherText}
-                                    />
-                                </div>
-                            )}
-                            {selK && selK !== "Lainnya" && (
+                            {reportedIssues.every((issue) => issue.tiket) && (
                                 <div className="mb-5">
                                     <InfoBox type="info">
-                                        Sistem memeriksa duplikasi... Tidak ada
-                                        tiket aktif dengan kendala{" "}
-                                        <strong>{selK}</strong> untuk OPD Anda.
+                                        Semua kendala pada profiling ini sudah
+                                        memiliki tiket. Pantau tindak lanjutnya
+                                        di menu Pantau Tiket.
                                     </InfoBox>
                                 </div>
                             )}
                             <Btn
-                                disabled={
-                                    !selK ||
-                                    (selK === "Lainnya" && !otherText.trim())
-                                }
+                                disabled={!selectedIssueId}
                                 onClick={() => setStep(1)}
                             >
                                 Lanjutkan →
@@ -5391,9 +6266,11 @@ function TiketPengaduan() {
                             <div className="flex items-center gap-2 mb-5">
                                 <Badge
                                     label={
-                                        selK === "Lainnya"
-                                            ? otherText || "Lainnya"
-                                            : selK
+                                        selectedIssue
+                                            ? getProfilingIssueLabel(
+                                                  selectedIssue,
+                                              )
+                                            : "Pilih kendala"
                                     }
                                     color="blue"
                                 />
@@ -5402,47 +6279,90 @@ function TiketPengaduan() {
                                 Detail Pengaduan
                             </h3>
                             <p className="text-sm text-slate-400 mb-5">
-                                Lengkapi informasi berikut agar Admin dapat
-                                menindaklanjuti dengan cepat dan tepat.
+                                Tiket ini menggunakan uraian kendala yang sudah
+                                dicatat pada profiling.
                             </p>
                             <div className="bg-slate-50 rounded-xl p-4 mb-5 space-y-1">
                                 <p className="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-2">
-                                    Data Jaringan OPD (Profiling Sep 2026)
+                                    Data Jaringan OPD
+                                    {profilingPeriod
+                                        ? ` (Profiling ${profilingPeriod})`
+                                        : ""}
                                 </p>
                                 <p className="text-sm text-slate-600">
                                     OPD:{" "}
                                     <strong>
-                                        Dinas Pendidikan dan Kebudayaan
+                                        {opdName ??
+                                            "Akun belum terhubung ke OPD"}
                                     </strong>
                                 </p>
                                 <p className="text-sm text-slate-600">
-                                    Koneksi: Fiber Optik · ISP: PT Telkom
-                                    Indonesia · Bandwidth: 100 Mbps
+                                    {activeConnection
+                                        ? `ISP: ${activeConnection.nama_isp} · Bandwidth: ${activeConnection.bandwidth_mbps} Mbps`
+                                        : "Koneksi: Belum ada data koneksi aktif"}
                                 </p>
-                            </div>
-                            <div className="space-y-4 mb-6">
-                                <FTextarea
-                                    label="Deskripsi Lengkap Kendala"
-                                    required
-                                    rows={5}
-                                    placeholder="Jelaskan detail: kapan pertama terjadi, berapa sering, dampak pada pekerjaan, langkah yang sudah dicoba, lokasi ruangan yang terdampak, dll."
-                                    value={desc}
-                                    onChange={setDesc}
-                                />
-                                <FInput
-                                    label="Narahubung / No. Telepon"
-                                    placeholder="08xx-xxxx-xxxx"
-                                    value={contact}
-                                    onChange={setContact}
-                                    hint="Nomor yang bisa dihubungi jika tim teknis perlu konfirmasi lebih lanjut"
-                                />
+                                <p className="text-sm text-slate-600 pt-2">
+                                    Kendala:{" "}
+                                    <strong>
+                                        {selectedIssue
+                                            ? getProfilingIssueLabel(
+                                                  selectedIssue,
+                                              )
+                                            : ""}
+                                    </strong>
+                                </p>
+                                <p className="text-sm text-slate-600 whitespace-pre-wrap">
+                                    {selectedIssue?.deskripsi ||
+                                        "Tidak ada uraian kendala pada profiling."}
+                                </p>
                             </div>
                             <div className="flex gap-3">
                                 <Btn
-                                    disabled={!desc.trim()}
-                                    onClick={() => setDone(true)}
+                                    disabled={!selectedIssue || submitting}
+                                    onClick={async () => {
+                                        setSubmitError("");
+                                        setSubmitting(true);
+                                        try {
+                                            const response = await axios.post(
+                                                route("tiket.store"),
+                                                {
+                                                    kendala_id:
+                                                        selectedIssue?.id,
+                                                    urgensi: "sedang",
+                                                },
+                                                {
+                                                    headers: {
+                                                        Accept: "application/json",
+                                                    },
+                                                },
+                                            );
+                                            setTicketNumber(
+                                                response.data.ticket
+                                                    .nomor_tiket,
+                                            );
+                                            onCreated(response.data.ticket);
+                                            setDone(true);
+                                        } catch (error) {
+                                            if (axios.isAxiosError(error)) {
+                                                setSubmitError(
+                                                    error.response?.data
+                                                        ?.message ??
+                                                        "Tiket gagal disimpan. Periksa data dan coba lagi.",
+                                                );
+                                            } else {
+                                                setSubmitError(
+                                                    "Terjadi kesalahan saat mengajukan tiket.",
+                                                );
+                                            }
+                                        } finally {
+                                            setSubmitting(false);
+                                        }
+                                    }}
                                 >
-                                    <Ticket size={16} /> Ajukan Tiket
+                                    <Ticket size={16} />{" "}
+                                    {submitting
+                                        ? "Menyimpan..."
+                                        : "Ajukan Tiket"}
                                 </Btn>
                                 <Btn
                                     variant="secondary"
@@ -5451,6 +6371,13 @@ function TiketPengaduan() {
                                     ← Kembali
                                 </Btn>
                             </div>
+                            {submitError && (
+                                <div className="mt-4">
+                                    <InfoBox type="error">
+                                        {submitError}
+                                    </InfoBox>
+                                </div>
+                            )}
                         </>
                     )}
                 </Card>
@@ -5460,8 +6387,52 @@ function TiketPengaduan() {
 }
 
 // ─── Pantau Tiket ─────────────────────────────────────────────────────────────
-function PantauTiket() {
-    const [sel, setSel] = useState<(typeof ticketList)[0] | null>(null);
+function PantauTiket({ tickets }: { tickets: any[] }) {
+    const displayTickets = tickets.map((ticket) => {
+        const kindLabels: Record<string, string> = {
+            bandwidth_kurang: "Speed Lambat",
+            device: "Perangkat Rusak",
+            topologi: "Konfigurasi Jaringan",
+            sosialisasi: "Lainnya",
+        };
+        const statusLabels: Record<string, string> = {
+            baru: "Baru",
+            diteruskan: "Diteruskan",
+            proses: "Proses",
+            menunggu_verifikasi: "Proses",
+            selesai: "Selesai",
+            ditolak: "Ditolak",
+        };
+
+        return {
+            id: ticket.nomor_tiket,
+            opd: ticket.kendala?.profiling?.opd?.nama_opd ?? "OPD",
+            kendala:
+                kindLabels[ticket.kendala?.jenis_kendala] ??
+                ticket.kendala?.jenis_kendala ??
+                "Kendala jaringan",
+            deskripsi: ticket.kendala?.deskripsi ?? "-",
+            status: statusLabels[ticket.status] ?? ticket.status,
+            tanggal: ticket.created_at?.slice(0, 10) ?? "-",
+            vendor: ticket.pihak_ketiga?.nama_vendor ?? null,
+            prioritas: ticket.urgensi,
+            histori: (ticket.riwayat ?? []).map((history: any) => ({
+                tgl: history.tanggal?.slice(0, 10) ?? "-",
+                ev: history.catatan,
+                aktor: history.user?.nama ?? "Pengguna",
+            })),
+        };
+    });
+    const [sel, setSel] = useState<(typeof displayTickets)[number] | null>(
+        displayTickets[0] ?? null,
+    );
+    useEffect(() => {
+        setSel((current) =>
+            displayTickets.find((ticket) => ticket.id === current?.id) ??
+            displayTickets[0] ??
+            null,
+        );
+    }, [tickets]);
     return (
         <div>
             <PageHeader
@@ -5470,7 +6441,11 @@ function PantauTiket() {
             />
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                 <div className="lg:col-span-2 space-y-3">
-                    {ticketList.map((t) => (
+                    {displayTickets.length === 0 ? (
+                        <Card className="p-6 text-center text-sm text-slate-400">
+                            Belum ada tiket yang diajukan.
+                        </Card>
+                    ) : displayTickets.map((t) => (
                         <Card
                             key={t.id}
                             className={clx(
@@ -6539,64 +7514,215 @@ function VerifikasiPenanganan() {
 }
 
 // ─── App Shell ────────────────────────────────────────────────────────────────
-export default function App() {
+export default function App({
+    role: authenticatedRole,
+    userName: authenticatedName,
+    opdName: authenticatedOpdName,
+    opds: initialOpds = [],
+    vendors: initialVendors = [],
+    profilings: initialProfilings = [],
+    tickets: initialTickets = [],
+}: {
+    role?: Role;
+    userName?: string;
+    opdName?: string | null;
+    opds?: OpdDashboardRecord[];
+    vendors?: Array<{ id: number; nama_vendor: string }>;
+    profilings?: ProfilingRecord[];
+    tickets?: any[];
+}) {
     const path = window.location.pathname;
-    const initialRole: Role = path.includes("opd/dashboard") ? "opd" : "admin";
-    const initialScreen: Screen = path.includes("dashboard")
-        ? (`dashboard-${initialRole}` as Screen)
-        : "login";
+    const pathRole: Role = path.includes("opd/dashboard") ? "opd" : "admin";
+    const initialRole = authenticatedRole ?? pathRole;
+    const initialScreen: Screen = authenticatedRole
+        ? (`dashboard-${authenticatedRole}` as Screen)
+        : path.includes("dashboard")
+          ? (`dashboard-${pathRole}` as Screen)
+          : "login";
     const [screen, setScreen] = useState<Screen>(initialScreen);
     const [role, setRole] = useState<Role>(initialRole);
-    const [userName, setUserName] = useState("");
+    const [userName, setUserName] = useState(authenticatedName ?? "");
+    const [logoutError, setLogoutError] = useState("");
+    const [databaseOpds, setDatabaseOpds] = useState(initialOpds);
+    const [databaseProfilings, setDatabaseProfilings] =
+        useState(initialProfilings);
+    const [databaseTickets, setDatabaseTickets] = useState(initialTickets);
+    const [selectedProfilingId, setSelectedProfilingId] = useState<
+        number | null
+    >(null);
+    const editablePeriodProfiling = [...databaseProfilings]
+        .filter((profiling) =>
+            ["draft", "dikembalikan"].includes(
+                profiling.status_verifikasi,
+            ),
+        )
+        .sort((a, b) => b.periode.localeCompare(a.periode))[0];
+    const profilingToContinue =
+        databaseProfilings.find(
+            (profiling) => profiling.id === selectedProfilingId,
+        ) ?? editablePeriodProfiling;
+    const databaseProfilingQueue = databaseProfilings
+        .filter((profiling) => profiling.status_verifikasi === "diajukan")
+        .map(toProfilingQueueItem);
 
-    const handleLogin = (r: Role, name: string) => {
-        setRole(r);
-        setUserName(name);
-        setScreen(
-            {
-                admin: "dashboard-admin",
-                opd: "dashboard-opd",
-                vendor: "dashboard-vendor",
-            }[r] as Screen,
-        );
-    };
-    const handleLogout = () => {
-        setScreen("login");
-        setUserName("");
+    const handleLogout = async () => {
+        setLogoutError("");
+        try {
+            await axios.post(route("logout"), {}, {
+                headers: { Accept: "application/json" },
+            });
+            window.location.assign(route("login"));
+        } catch {
+            setLogoutError(
+                "Gagal keluar dari sistem. Periksa koneksi lalu coba lagi.",
+            );
+        }
     };
     const currentTitle =
         [...navItems.admin, ...navItems.opd, ...navItems.vendor].find(
             (i) => i.screen === screen,
         )?.label ?? "SIPROJAR";
+    const profilingForm = (
+        <FormProfiling
+            key={selectedProfilingId ?? "profiling-form"}
+            onNav={setScreen}
+            opdName={authenticatedOpdName}
+            existingProfiling={profilingToContinue}
+            onCreated={(profiling) =>
+                setDatabaseProfilings((current) => [
+                    profiling,
+                    ...current.filter((item) => item.id !== profiling.id),
+                ])
+            }
+        />
+    );
 
-    if (screen === "login") return <Login onLogin={handleLogin} />;
+    if (screen === "login") return <Login />;
 
     const render = () => {
         switch (screen) {
             case "dashboard-admin":
-                return <DashboardAdmin onNav={setScreen} />;
+                return (
+                    <DashboardAdmin
+                        onNav={setScreen}
+                        opds={databaseOpds}
+                        profilings={databaseProfilings}
+                        tickets={databaseTickets}
+                    />
+                );
             case "master-opd":
-                return <MasterOPD />;
+                return (
+                    <MasterOPD
+                        opds={databaseOpds}
+                        onChanged={setDatabaseOpds}
+                    />
+                );
             case "master-user":
                 return <MasterUser />;
             case "form-profiling":
-                return <FormProfiling onNav={setScreen} />;
+                return null;
             case "riwayat-profiling":
-                return <RiwayatProfiling onNav={setScreen} />;
+                return (
+                    <RiwayatProfiling
+                        onContinue={(profilingId) => {
+                            setSelectedProfilingId(profilingId);
+                            setScreen("form-profiling");
+                        }}
+                        profilings={databaseProfilings}
+                    />
+                );
             case "verifikasi-profiling":
-                return <VerifikasiProfiling />;
+                return (
+                    <VerifikasiProfiling
+                        queue={databaseProfilingQueue}
+                        onResolved={(id, status, kesimpulan) =>
+                            setDatabaseProfilings((current) =>
+                                current.map((profiling) =>
+                                    profiling.id === id
+                                        ? {
+                                              ...profiling,
+                                              status_verifikasi: status,
+                                              kesimpulan,
+                                              tanggal_diverifikasi:
+                                                  new Date().toISOString(),
+                                          }
+                                        : profiling,
+                                ),
+                            )
+                        }
+                    />
+                );
             case "kelola-tiket":
-                return <KelolaTicket />;
+                return (
+                    <KelolaTicket
+                        tickets={databaseTickets}
+                        vendors={initialVendors}
+                        onChanged={(ticket) =>
+                            setDatabaseTickets((current) =>
+                                current.map((item) =>
+                                    item.id === ticket.id ? ticket : item,
+                                ),
+                            )
+                        }
+                    />
+                );
             case "verifikasi-penanganan":
                 return <VerifikasiPenanganan />;
             case "laporan":
                 return <Laporan />;
             case "dashboard-opd":
-                return <DashboardOPD onNav={setScreen} />;
+                return (
+                    <DashboardOPD
+                        onNav={setScreen}
+                        opdName={authenticatedOpdName}
+                    />
+                );
             case "tiket-pengaduan":
-                return <TiketPengaduan />;
+                return (
+                    <TiketPengaduan
+                        onNav={setScreen}
+                        opdName={authenticatedOpdName}
+                        profilings={databaseProfilings}
+                        onCreated={(ticket) => {
+                            setDatabaseTickets((current) => [
+                                ticket,
+                                ...current.filter(
+                                    (item) =>
+                                        item.nomor_tiket !==
+                                        ticket.nomor_tiket,
+                                ),
+                            ])
+                            setDatabaseProfilings((current) =>
+                                current.map((profiling) =>
+                                    profiling.id ===
+                                    ticket.kendala?.data_profiling_id
+                                        ? {
+                                              ...profiling,
+                                              kendala: (
+                                                  profiling.kendala ?? []
+                                              ).map((issue) =>
+                                                  issue.id ===
+                                                  ticket.kendala_id
+                                                      ? {
+                                                            ...issue,
+                                                            tiket: {
+                                                                id: ticket.id,
+                                                                nomor_tiket:
+                                                                    ticket.nomor_tiket,
+                                                                status: ticket.status,
+                                                            },
+                                                        }
+                                                      : issue,
+                                              ),
+                                          }
+                                        : profiling,
+                                ),
+                            );
+                        }}
+                    />
+                );
             case "pantau-tiket":
-                return <PantauTiket />;
+                return <PantauTiket tickets={databaseTickets} />;
             case "dashboard-vendor":
                 return <DashboardVendor onNav={setScreen} />;
             case "tiket-masuk":
@@ -6622,7 +7748,19 @@ export default function App() {
                     <TopBar title={currentTitle} onLogout={handleLogout} />
                     <main className="flex-1 overflow-visible pb-20 lg:pb-0">
                         <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+                            {logoutError && (
+                                <div className="mb-4">
+                                    <InfoBox type="error">{logoutError}</InfoBox>
+                                </div>
+                            )}
                             {render()}
+                            <div
+                                className={
+                                    screen === "form-profiling" ? "" : "hidden"
+                                }
+                            >
+                                {profilingForm}
+                            </div>
                         </div>
                     </main>
                 </div>

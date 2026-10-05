@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -23,16 +24,27 @@ class AuthenticatedSessionController extends Controller
     /**
      * Handle an incoming authentication request.
      */
-    public function store(LoginRequest $request): RedirectResponse
+    public function store(LoginRequest $request): RedirectResponse|JsonResponse
     {
         $request->authenticate();
 
         $request->session()->regenerate();
 
-        $user = Auth::user();
+        $dashboardRoute = match (Auth::user()->role) {
+            'admin' => 'admin.dashboard',
+            'opd' => 'opd.dashboard',
+            'pihak_ketiga' => 'vendor.dashboard',
+        };
 
-        // Dashboard umum meneruskan pengguna ke halaman sesuai role.
-        return redirect()->intended(route('dashboard'));
+        if ($request->expectsJson()) {
+            return response()->json([
+                'role' => Auth::user()->role,
+                'name' => Auth::user()->nama,
+                'dashboard_url' => route($dashboardRoute),
+            ]);
+        }
+        $user = Auth::user();
+        return redirect()->intended(route($dashboardRoute));
     }
 
     /**

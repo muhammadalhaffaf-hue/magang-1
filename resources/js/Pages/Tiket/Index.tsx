@@ -22,14 +22,24 @@ export default function Index({ tickets, vendors }: any) {
                         </tr>
                     </thead>
                     <tbody>
-                        {tickets.data.map((ticket: any) => (
-                            <tr key={ticket.id} className="border-t">
-                                <td className="p-2">{ticket.nomor_tiket}</td>
-                                <td className="p-2">
-                                    {ticket.kendala?.profiling?.opd?.nama_opd}
+                        {tickets.data.length === 0 ? (
+                            <tr>
+                                <td
+                                    colSpan={4}
+                                    className="p-4 text-center text-gray-500"
+                                >
+                                    Belum ada tiket untuk dipantau.
                                 </td>
-                                <td className="p-2">{ticket.status}</td>
-                                <td className="p-2">
+                            </tr>
+                        ) : (
+                            tickets.data.map((ticket: any) => (
+                                <tr key={ticket.id} className="border-t">
+                                    <td className="p-2">{ticket.nomor_tiket}</td>
+                                    <td className="p-2">
+                                        {ticket.kendala?.profiling?.opd?.nama_opd}
+                                    </td>
+                                    <td className="p-2">{ticket.status}</td>
+                                    <td className="p-2">
                                     <Link
                                         href={route("tiket.show", ticket.id)}
                                         className="text-blue-600"
@@ -56,9 +66,10 @@ export default function Index({ tickets, vendors }: any) {
                                             Teruskan
                                         </button>
                                     ) : null}
-                                </td>
-                            </tr>
-                        ))}
+                                    </td>
+                                </tr>
+                            ))
+                        )}
                     </tbody>
                 </table>
             </div>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Opd;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -22,9 +23,12 @@ class OpdController extends Controller
         return Inertia::render('Admin/Opd/Form', ['opd' => null]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
-        Opd::create($this->validated($request));
+        $opd = Opd::create($this->validated($request));
+        if ($request->expectsJson()) {
+            return response()->json(['opd' => $opd->load(['koneksiInternet', 'dataProfiling'])], 201);
+        }
 
         return redirect()->route('opd.index')->with('success', 'Data OPD berhasil ditambahkan.');
     }
@@ -41,16 +45,22 @@ class OpdController extends Controller
         return Inertia::render('Admin/Opd/Form', ['opd' => $opd]);
     }
 
-    public function update(Request $request, Opd $opd): RedirectResponse
+    public function update(Request $request, Opd $opd): RedirectResponse|JsonResponse
     {
         $opd->update($this->validated($request));
+        if ($request->expectsJson()) {
+            return response()->json(['opd' => $opd->load(['koneksiInternet', 'dataProfiling'])]);
+        }
 
         return redirect()->route('opd.index')->with('success', 'Data OPD berhasil diperbarui.');
     }
 
-    public function destroy(Opd $opd): RedirectResponse
+    public function destroy(Request $request, Opd $opd): RedirectResponse|JsonResponse
     {
         $opd->delete();
+        if ($request->expectsJson()) {
+            return response()->json(['message' => 'Data OPD berhasil dihapus.']);
+        }
 
         return redirect()->route('opd.index')->with('success', 'Data OPD berhasil dihapus.');
     }
