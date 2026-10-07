@@ -51,6 +51,54 @@ class DashboardController extends Controller
                 ->with(['opd.koneksiInternet', 'aplikasi', 'speedTest', 'kendala.tiket'])
                 ->latest()
                 ->get(),
+            'reportRows' => $role === 'admin'
+                ? (DataProfiling::query()
+                    ->with(['opd.koneksiInternet', 'speedTest', 'kendala.tiket'])
+                    ->orderByDesc('periode')
+                    ->get()
+                    ->map(function (DataProfiling $profiling): array {
+                        $speedTest = $profiling->speedTest;
+                        $isGood = $speedTest?->hasil === 'sesuai';
+                        $hasSpeedTest = $speedTest !== null;
+                        $activeTickets = $profiling->kendala
+                            ->filter(fn ($issue) => $issue->tiket
+                                && ! in_array($issue->tiket->status, ['selesai', 'ditolak'], true))
+                            ->count();
+                        [$year, $month] = array_map(
+                            'intval',
+                            explode('-', $profiling->periode)
+                        );
+
+                        return [
+                            'id' => $profiling->id,
+                            'opd' => $profiling->opd->nama_opd,
+                            'bandwidth' => ($profiling->opd->koneksiInternet
+                                ->firstWhere('status', 'aktif')?->bandwidth_mbps ?? 0).' Mbps',
+                            'kondisi' => ! $hasSpeedTest
+                                ? 'Belum Ada Data'
+                                : ($isGood ? 'Baik' : 'Buruk'),
+                            'dl' => $speedTest?->kecepatan_unduh === null
+                                ? null
+                                : (float) $speedTest->kecepatan_unduh,
+                            'ul' => $speedTest?->kecepatan_unggah === null
+                                ? null
+                                : (float) $speedTest->kecepatan_unggah,
+                            'tiket' => $activeTickets,
+                            'profiling' => match ($profiling->status_verifikasi) {
+                                'diajukan' => 'Diajukan',
+                                'diverifikasi' => 'Diverifikasi',
+                                'dikembalikan' => 'Dikembalikan',
+                                default => 'Draft',
+                            },
+                            'year' => $year,
+                            'month' => $month,
+                            'baik' => $isGood ? 100 : 0,
+                            'sedang' => 0,
+                            'buruk' => $hasSpeedTest && ! $isGood ? 100 : 0,
+                        ];
+                    })
+                    ->values())
+                : [],
             'tickets' => (clone $tickets)
                 ->with(['kendala.profiling.opd', 'pihakKetiga', 'riwayat.user'])
                 ->latest()

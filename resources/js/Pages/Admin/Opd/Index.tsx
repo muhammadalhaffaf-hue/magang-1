@@ -59,6 +59,7 @@ import {
     Legend,
 } from "recharts";
 import { GridBackground } from "../../../Components/GridBackground";
+import { BorderBeam } from "../../../Components/BorderBeam";
 import axios from "axios";
 
 declare const route: (
@@ -162,6 +163,33 @@ type VendorTicketRecord = {
         user?: { nama: string } | null;
     }>;
 };
+type ReportRow = {
+    id: number;
+    opd: string;
+    bandwidth: string;
+    kondisi: string;
+    dl: number | null;
+    ul: number | null;
+    tiket: number;
+    profiling: string;
+    year: number;
+    month: number;
+    baik: number;
+    sedang: number;
+    buruk: number;
+};
+type PublicLandingStats = {
+    opds: number;
+    speedTestCompliance: number | null;
+    resolvedTickets: number;
+};
+
+const formatCompactCount = (value: number) =>
+    new Intl.NumberFormat("id-ID", {
+        notation: "compact",
+        maximumFractionDigits: 1,
+    }).format(value);
+
 const ticketStatusLabels: Record<string, string> = {
     baru: "Baru",
     diteruskan: "Diteruskan",
@@ -223,79 +251,6 @@ const kondisiPie = [
     { name: "Sedang", value: 22, color: "#f59e0b" },
     { name: "Buruk", value: 10, color: "#ef4444" },
 ];
-const reportRows = [
-    {
-        opd: "Dinas Pendidikan",
-        bandwidth: "100 Mbps",
-        kondisi: "Baik",
-        dl: 87,
-        ul: 34,
-        tiket: 0,
-        profiling: "Diverifikasi",
-        year: 2026,
-        month: 9,
-        baik: 80,
-        sedang: 15,
-        buruk: 5,
-    },
-    {
-        opd: "Dinas Kesehatan",
-        bandwidth: "100 Mbps",
-        kondisi: "Sedang",
-        dl: 61,
-        ul: 28,
-        tiket: 1,
-        profiling: "Diajukan",
-        year: 2026,
-        month: 9,
-        baik: 65,
-        sedang: 25,
-        buruk: 10,
-    },
-    {
-        opd: "Dinas PUPR",
-        bandwidth: "50 Mbps",
-        kondisi: "Buruk",
-        dl: 12,
-        ul: 5,
-        tiket: 2,
-        profiling: "Diverifikasi",
-        year: 2026,
-        month: 8,
-        baik: 55,
-        sedang: 30,
-        buruk: 15,
-    },
-    {
-        opd: "Dinas Perhubungan",
-        bandwidth: "200 Mbps",
-        kondisi: "Baik",
-        dl: 178,
-        ul: 89,
-        tiket: 0,
-        profiling: "Diverifikasi",
-        year: 2026,
-        month: 7,
-        baik: 90,
-        sedang: 8,
-        buruk: 2,
-    },
-    {
-        opd: "BKD",
-        bandwidth: "50 Mbps",
-        kondisi: "Sedang",
-        dl: 38,
-        ul: 19,
-        tiket: 1,
-        profiling: "Diajukan",
-        year: 2026,
-        month: 9,
-        baik: 70,
-        sedang: 20,
-        buruk: 10,
-    },
-];
-
 const opdList = [
     {
         id: 1,
@@ -1237,9 +1192,11 @@ function Sidebar({
         <aside className="nav-panel-shadow hidden lg:flex w-64 xl:w-72 flex-shrink-0 flex-col bg-blue-50/70 border-r border-blue-100 h-screen sticky top-0 self-start overflow-hidden">
             <div className="px-5 py-5 border-b border-slate-200">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-700 rounded-2xl flex items-center justify-center text-white font-black text-sm shadow-lg">
-                        DK
-                    </div>
+                    <img
+                        src="/diskominfo-logo.svg"
+                        alt="Logo Diskominfo"
+                        className="h-10 w-10 rounded-full border-2 border-blue-200 bg-white p-0.5 object-contain shadow-lg"
+                    />
                     <div>
                         <p className="text-slate-900 font-bold text-sm leading-tight">
                             SIPROJAR
@@ -1367,9 +1324,11 @@ function TopBar({ title, onLogout }: { title: string; onLogout: () => void }) {
     return (
         <div className="lg:hidden sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 bg-blue-700 rounded-lg flex items-center justify-center text-white font-black text-xs">
-                    DK
-                </div>
+                <img
+                    src="/diskominfo-logo.svg"
+                    alt="Logo Diskominfo"
+                    className="h-7 w-7 rounded-full border-2 border-blue-200 bg-white p-0.5 object-contain"
+                />
                 <p className="text-slate-900 font-bold text-sm truncate">
                     {title}
                 </p>
@@ -1427,7 +1386,7 @@ function createCaptcha() {
     };
 }
 
-function Login() {
+function Login({ landingStats }: { landingStats?: PublicLandingStats }) {
     const [email, setEmail] = useState("");
     const [pw, setPw] = useState("");
     const [err, setErr] = useState("");
@@ -1474,9 +1433,11 @@ function Login() {
         <div className="relative min-h-screen bg-transparent flex flex-col lg:flex-row">
             <div className="hidden lg:flex flex-col justify-between w-1/2 p-16">
                 <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 bg-blue-500 rounded-2xl flex items-center justify-center text-white font-black shadow-lg">
-                        DK
-                    </div>
+                    <img
+                        src="/diskominfo-logo.svg"
+                        alt="Logo Diskominfo"
+                        className="h-11 w-11 rounded-full border-2 border-blue-200 bg-white p-0.5 object-contain shadow-lg"
+                    />
                     <div>
                         <p className="text-slate-900 font-bold text-lg">
                             SIPROJAR
@@ -1499,21 +1460,42 @@ function Login() {
                     </p>
                     <div className="mt-10 grid grid-cols-3 gap-4">
                         {[
-                            ["32", "OPD Terdaftar"],
-                            ["98%", "Uptime Rata-rata"],
-                            ["1.2rb", "Tiket Terselesaikan"],
-                        ].map(([v, l]) => (
-                            <div
-                                key={l}
-                                className="bg-white/80 backdrop-blur border border-slate-200 rounded-2xl p-4 shadow-sm"
+                            {
+                                label: "OPD Terdaftar",
+                                value:
+                                    landingStats?.opds.toLocaleString("id-ID") ??
+                                    "—",
+                            },
+                            {
+                                label: "Speed Test Sesuai",
+                                value:
+                                    landingStats?.speedTestCompliance == null
+                                        ? "—"
+                                        : `${landingStats.speedTestCompliance}%`,
+                            },
+                            {
+                                label: "Tiket Terselesaikan",
+                                value:
+                                    landingStats == null
+                                        ? "—"
+                                        : formatCompactCount(
+                                              landingStats.resolvedTickets,
+                                          ),
+                            },
+                        ].map(({ label, value }, index) => (
+                            <BorderBeam
+                                key={label}
+                                delay={-index * (4 / 3)}
                             >
-                                <p className="text-2xl font-extrabold text-slate-900">
-                                    {v}
-                                </p>
-                                <p className="text-slate-500 text-xs mt-1">
-                                    {l}
-                                </p>
-                            </div>
+                                <div className="relative z-10">
+                                    <p className="text-2xl font-extrabold text-slate-900">
+                                        {value}
+                                    </p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        {label}
+                                    </p>
+                                </div>
+                            </BorderBeam>
                         ))}
                     </div>
                 </div>
@@ -1525,9 +1507,11 @@ function Login() {
                 <div className="w-full max-w-md">
                     <div className="bg-white rounded-3xl shadow-2xl p-7 sm:p-9">
                         <div className="flex items-center gap-3 mb-8 lg:hidden">
-                            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black">
-                                DK
-                            </div>
+                            <img
+                                src="/diskominfo-logo.svg"
+                                alt="Logo Diskominfo"
+                                className="h-10 w-10 rounded-full border-2 border-blue-200 bg-white p-0.5 object-contain"
+                            />
                             <div>
                                 <p className="font-bold text-slate-800">
                                     SIPROJAR
@@ -1543,6 +1527,12 @@ function Login() {
                         <p className="text-slate-400 text-sm mb-7">
                             Masuk untuk mengakses dashboard Anda
                         </p>
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                if (!loading) void submit();
+                            }}
+                        >
                         <div className="space-y-4">
                             <FInput
                                 label="Alamat Email"
@@ -1631,6 +1621,7 @@ function Login() {
                                     }
                                     aria-label="Jawaban CAPTCHA"
                                     placeholder="Ketik kode"
+                                    required
                                     className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                                 />
                                 <button
@@ -1657,7 +1648,6 @@ function Login() {
                         )}
                         <button
                             type="submit"
-                            onClick={submit}
                             onMouseMove={(event) => {
                                 const bounds =
                                     event.currentTarget.getBoundingClientRect();
@@ -1684,6 +1674,7 @@ function Login() {
                                 </span>
                             )}
                         </button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -5979,8 +5970,16 @@ function LaporanLegacy() {
     );
 }
 
-function Laporan() {
-    const [year, setYear] = useState("2026");
+function Laporan({ reportRows }: { reportRows: ReportRow[] }) {
+    const availableYears = [
+        ...new Set(reportRows.map((row) => String(row.year))),
+    ].sort((first, second) => Number(second) - Number(first));
+    const currentYear = String(new Date().getFullYear());
+    const [year, setYear] = useState(
+        availableYears.includes(currentYear)
+            ? currentYear
+            : (availableYears[0] ?? currentYear),
+    );
     const [period, setPeriod] = useState("Semua Bulan");
     const [opd, setOpd] = useState("Semua OPD");
     const months = [
@@ -6007,16 +6006,22 @@ function Laporan() {
     const selectedMonths =
         periodMonths[period] ??
         (period === "Semua Bulan" ? null : [months.indexOf(period) + 1]);
+    const opdOptions = [
+        ...new Set(reportRows.map((row) => row.opd)),
+    ].sort((first, second) => first.localeCompare(second, "id"));
     const filtered = reportRows.filter(
         (row) =>
             row.year === Number(year) &&
             (!selectedMonths || selectedMonths.includes(row.month)) &&
             (opd === "Semua OPD" || row.opd === opd),
     );
+    const measuredRows = filtered.filter(
+        (row) => row.kondisi !== "Belum Ada Data",
+    );
     const average = (key: "baik" | "sedang" | "buruk") =>
-        filtered.length
-            ? `${Math.round(filtered.reduce((total, row) => total + row[key], 0) / filtered.length)}%`
-            : "0%";
+        measuredRows.length
+            ? `${Math.round(measuredRows.reduce((total, row) => total + row[key], 0) / measuredRows.length)}%`
+            : "—";
     const exportRows = filtered.map(
         ({ opd: nama, bandwidth, kondisi, dl, ul, tiket, profiling }) => ({
             OPD: nama,
@@ -6099,7 +6104,7 @@ function Laporan() {
                 <div className="min-w-32">
                     <FSelect
                         label="Tahun"
-                        options={["2026", "2025", "2024"]}
+                        options={availableYears}
                         value={year}
                         onChange={setYear}
                     />
@@ -6115,10 +6120,7 @@ function Laporan() {
                 <div className="min-w-52">
                     <FSelect
                         label="OPD"
-                        options={[
-                            "Semua OPD",
-                            ...reportRows.map((row) => row.opd),
-                        ]}
+                        options={["Semua OPD", ...opdOptions]}
                         value={opd}
                         onChange={setOpd}
                     />
@@ -6127,7 +6129,7 @@ function Laporan() {
             <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <StatCard
                     label="OPD dalam filter"
-                    value={filtered.length}
+                    value={new Set(filtered.map((row) => row.opd)).size}
                     icon={<Building2 size={20} />}
                     color="blue"
                 />
@@ -6164,7 +6166,7 @@ function Laporan() {
                             </h3>
                             <ResponsiveContainer width="100%" height={240}>
                                 <BarChart
-                                    data={filtered}
+                                    data={measuredRows}
                                     layout="vertical"
                                     barSize={13}
                                 >
@@ -6267,7 +6269,7 @@ function Laporan() {
                                 <tbody>
                                     {filtered.map((row) => (
                                         <tr
-                                            key={row.opd}
+                                            key={row.id}
                                             className="border-b border-slate-50 hover:bg-blue-50/30"
                                         >
                                             <td className="px-4 py-3.5 font-semibold text-slate-800">
@@ -8588,6 +8590,8 @@ function VerifikasiPenanganan() {
 // ─── App Shell ────────────────────────────────────────────────────────────────
 export default function App({
     role: authenticatedRole,
+    landingStats,
+    reportRows: initialReportRows = [],
     userName: authenticatedName,
     opdName: authenticatedOpdName,
     vendorName: authenticatedVendorName,
@@ -8598,6 +8602,8 @@ export default function App({
     tickets: initialTickets = [],
 }: {
     role?: Role;
+    landingStats?: PublicLandingStats;
+    reportRows?: ReportRow[];
     userName?: string;
     opdName?: string | null;
     vendorName?: string | null;
@@ -8675,7 +8681,7 @@ export default function App({
         />
     );
 
-    if (screen === "login") return <Login />;
+    if (screen === "login") return <Login landingStats={landingStats} />;
 
     const render = () => {
         switch (screen) {
@@ -8776,7 +8782,7 @@ export default function App({
                     />
                 );
             case "laporan":
-                return <Laporan />;
+                return <Laporan reportRows={initialReportRows} />;
             case "dashboard-opd":
                 return (
                     <DashboardOPD
